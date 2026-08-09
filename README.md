@@ -1,0 +1,83 @@
+# Sprocket Mod API
+
+面向《Sprocket》MelonLoader 模组的公共运行库。首个稳定接口提供统一键位注册、输入路由、配置持久化和游戏内模组键位管理窗口，供多个模组共享同一套输入行为。
+
+当前发行版本为 `0.1.0`，公共 API 版本为 `1.0`。发行版本与 API 兼容版本相互独立。目标环境为 Sprocket `0.2.53.2`、MelonLoader net6 和 Unity Input System。
+
+## 功能
+
+- 通过 `SprocketApi.TryGetService<T>()` 获取可扩展服务，当前提供 `IInputService`。
+- 使用稳定的 `modId + actionId` 注册模组动作。
+- 每个动作支持两个键位槽，可绑定键盘键、鼠标键和精确修饰键组合。
+- 支持修饰键自身作为主键，例如单独绑定左 `Ctrl`。
+- 提供 `Pressed`、`Released`、`Tapped` 回调和逐帧状态查询。
+- 失去焦点、打开设置或模组键位窗口时抑制模组动作，避免切回游戏后卡键。
+- 提供可嵌套的 `AcquireInputBlock`，供其他模组临时阻断全部 API 动作。
+- 仅在原生 Keymapping 页面激活时显示模组键位入口；入口通过 UI 事件跟随原生页面，并与 `Action buttons` 左边界对齐。
+- 管理窗口支持按模组分组、搜索、滚动、双槽绑定、Esc 解绑和恢复默认值，并拦截窗口外的鼠标点击以防穿透原生设置页。
+- 将用户覆盖保存到 `UserData\SprocketModAPI\keybindings.json`；未覆盖的绑定继续跟随模组默认值。
+- 隔离动作回调异常，单个模组的错误不会阻断其他动作。
+
+## 安装
+
+1. 安装与游戏版本匹配的 MelonLoader net6。
+2. 将 `SprocketModAPI.dll` 放入游戏根目录的 `Mods` 文件夹。
+3. 将依赖本 API 的模组 DLL 放入同一 `Mods` 文件夹。
+
+依赖模组应在程序集上声明：
+
+```csharp
+[assembly: MelonAdditionalDependencies("SprocketModAPI")]
+```
+
+## 使用
+
+进入游戏设置的 Keymapping 页面后，点击 `MOD KEYBINDINGS`。点击任一绑定槽开始捕获；按 `Esc` 会清空当前槽位，点击 Reset 列中的按钮恢复该动作的默认绑定。`Delete` 和 `Backspace` 可像其他键一样被绑定。
+
+模组接入示例和接口约束见 [公共 API](docs/api.md)。键位捕获、持久化和上下文行为见 [键位管理](docs/keybindings.md)。
+
+## 构建
+
+项目目标框架为 .NET 6，默认从相邻的 Sprocket 安装目录读取 MelonLoader、IL2CPP、Unity UI、TextMeshPro 和 Input System 程序集。
+
+```text
+G:\Sprocket\
+├── MelonLoader\
+├── Mods\
+└── mod\SprocketModAPI\
+```
+
+```powershell
+dotnet build .\SprocketModAPI\SprocketModAPI.csproj `
+  --configuration Release `
+  -p:SkipModDeploy=true
+```
+
+去掉 `-p:SkipModDeploy=true` 会将生成的 DLL 复制到游戏的 `Mods` 文件夹。仓库位于其他位置时，可通过 `-p:SprocketGameRoot="G:\Sprocket"` 指定游戏根目录。
+
+运行离线合约测试：
+
+```powershell
+dotnet run --configuration Release `
+  --project .\SprocketModAPI.ContractTests\SprocketModAPI.ContractTests.csproj
+```
+
+## 源码布局
+
+- `SprocketModAPI/Api.cs`：公共契约、服务注册、输入状态、上下文门禁和配置持久化。
+- `SprocketModAPI/InputManagerUi.cs`：游戏内键位窗口、搜索、滚动列表和输入捕获。
+- `SprocketModAPI.ContractTests/`：不启动游戏的公共行为合约测试。
+- `docs/`：模组接入与键位管理文档。
+
+## 当前限制
+
+- v1 仅支持键盘和鼠标。
+- 管理窗口依赖当前 Sprocket 设置场景和 UI 结构，游戏更新后可能需要适配。
+- v0.1.0 尚未提供键位冲突警告，也未导入游戏原生 `InputActionAsset`。
+- 构建和离线测试通过不代表所有分辨率、主菜单入口和暂停菜单入口均已完成游戏内验收。
+
+## 许可证
+
+Copyright (c) 2026 furryAxw
+
+本项目以 [GNU Lesser General Public License v3.0 或更高版本](LICENSE.txt) 发布。LGPL v3 引用的 GNU GPL v3 正文见 [COPYING.txt](COPYING.txt)。
