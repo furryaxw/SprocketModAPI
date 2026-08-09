@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 namespace SprocketModAPI
 {
-    internal sealed partial class InputService
+    internal sealed partial class KeybindingUiController
     {
         private GameObject? observedSettingsContent;
         private GameObject? observedKeymapping;
@@ -22,7 +22,7 @@ namespace SprocketModAPI
             }
         }
 
-        internal void NotifySceneLoadedForUi(string sceneName)
+        internal void NotifySceneLoaded(string sceneName)
         {
             if (!string.Equals(sceneName, "SettingsMenu", StringComparison.Ordinal))
                 return;
@@ -206,16 +206,16 @@ namespace SprocketModAPI
 
     public sealed class ContentHierarchyWatcher : MonoBehaviour
     {
-        private void OnEnable() => ApiMod.Service?.NotifySettingsContentChanged(transform);
-        private void OnTransformChildrenChanged() => ApiMod.Service?.NotifySettingsContentChanged(transform);
-        private void OnDestroy() => ApiMod.Service?.NotifySettingsContentDestroyed();
+        private void OnEnable() => KeybindingsModule.Controller?.NotifySettingsContentChanged(transform);
+        private void OnTransformChildrenChanged() => KeybindingsModule.Controller?.NotifySettingsContentChanged(transform);
+        private void OnDestroy() => KeybindingsModule.Controller?.NotifySettingsContentDestroyed();
     }
 
     public sealed class KeymappingActivationWatcher : MonoBehaviour
     {
-        private void OnEnable() => ApiMod.Service?.NotifyKeymappingActivationChanged(gameObject, true);
-        private void OnDisable() => ApiMod.Service?.NotifyKeymappingActivationChanged(gameObject, false);
-        private void OnDestroy() => ApiMod.Service?.NotifyKeymappingDestroyed();
+        private void OnEnable() => KeybindingsModule.Controller?.NotifyKeymappingActivationChanged(gameObject, true);
+        private void OnDisable() => KeybindingsModule.Controller?.NotifyKeymappingActivationChanged(gameObject, false);
+        private void OnDestroy() => KeybindingsModule.Controller?.NotifyKeymappingDestroyed();
     }
 
     public sealed class ActionButtonsAlignmentWatcher : MonoBehaviour
@@ -223,13 +223,13 @@ namespace SprocketModAPI
         private void OnEnable() => Notify();
         private void OnRectTransformDimensionsChange() => Notify();
         private void OnTransformParentChanged() => Notify();
-        private void OnDestroy() => ApiMod.Service?.NotifyActionButtonsDestroyed();
+        private void OnDestroy() => KeybindingsModule.Controller?.NotifyActionButtonsDestroyed();
 
         private void Notify()
         {
             RectTransform rect = GetComponent<RectTransform>();
             if (rect != null)
-                ApiMod.Service?.NotifyActionButtonsRectChanged(rect);
+                KeybindingsModule.Controller?.NotifyActionButtonsRectChanged(rect);
         }
     }
 }

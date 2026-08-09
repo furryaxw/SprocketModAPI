@@ -30,6 +30,17 @@ if (!SprocketApi.IsCompatible(new Version(1, 0)))
 [assembly: MelonAdditionalDependencies("SprocketModAPI")]
 ```
 
+## 服务获取与生命周期
+
+`SprocketApi.TryGetService<T>()` 从模块化注册表按公开接口解析服务。当前 Keybindings 模块注册 `IInputService`；模块注销后，该接口会立即停止解析，API 关闭后注册表不会保留服务引用。
+
+```csharp
+if (!SprocketApi.TryGetService<IInputService>(out var input))
+    return;
+```
+
+新增模块通过 Core 的统一生命周期接入，不应把实现堆入 Keybindings 模块。游戏原生 UI 组件服务尚未实现。
+
 ## 注册动作
 
 ```csharp
@@ -77,7 +88,7 @@ new KeyChord("<Keyboard>/k", ModifierKeys.LeftCtrl | ModifierKeys.LeftShift)
 new KeyChord("<Mouse>/middleButton")
 ```
 
-组合键要求修饰键集合精确匹配。若动作绑定为左 `Ctrl + K`，同时按住额外的 `Shift` 不会触发。修饰键自身可作为主键；作为主键时不会再次计入修饰键集合。
+组合键要求修饰键集合精确匹配。若动作绑定为左 `Ctrl + K`，同时按住额外的 `Shift` 不会触发。管理窗口显示组合键时使用 `LeftCtrl+K` 格式。修饰键自身可作为主键；作为主键时不会再次计入修饰键集合。
 
 动作固定提供槽位 `0` 和 `1`：
 
@@ -87,7 +98,7 @@ toggleAction.SetBinding(1, null); // 清空第二槽
 toggleAction.RestoreDefaults();
 ```
 
-传入其他槽位会抛出 `ArgumentOutOfRangeException`。
+传入其他槽位会抛出 `ArgumentOutOfRangeException`。若 Primary 与 Secondary 最终完全相同，API 始终保留 Primary 并自动清空 Secondary。
 
 ## 事件和查询
 

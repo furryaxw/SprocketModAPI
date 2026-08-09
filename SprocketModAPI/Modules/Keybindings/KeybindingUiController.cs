@@ -13,8 +13,11 @@ namespace SprocketModAPI
 {
     // The modal uses UGUI so its full-screen raycast surface prevents pointer
     // events from reaching the native settings page underneath it.
-    internal sealed partial class InputService
+    internal sealed partial class KeybindingUiController : IDisposable
     {
+        private readonly InputService input;
+        private readonly Action<string> warn;
+        private readonly Action<string> error;
         private const float CanvasWidth = 1122.519685f;
         private const float CanvasHeight = 793.700787f;
         private const float WindowWidth = 971.338583f;
@@ -33,6 +36,7 @@ namespace SprocketModAPI
         private const float ScrollbarWidth = 8f;
         private const float ModHeaderHeight = 30f;
         private const float ActionRowHeight = 40f;
+        private const float ConflictLineHeight = 14f;
         private const float ModSeparatorHeight = 2f;
         private const int RowHorizontalPadding = 16;
         private const int RowVerticalPadding = 5;
@@ -96,13 +100,24 @@ namespace SprocketModAPI
         private ModifierKeys captureModifiers;
         private string? modifierOnlyPath;
 
-        internal void UpdateUi()
+        internal KeybindingUiController(InputService input, Action<string> warn, Action<string> error)
+        {
+            this.input = input ?? throw new ArgumentNullException(nameof(input));
+            this.warn = warn ?? throw new ArgumentNullException(nameof(warn));
+            this.error = error ?? throw new ArgumentNullException(nameof(error));
+            input.InternalActionsChanged += MarkDirty;
+        }
+
+        internal bool IsVisible => uiVisible;
+
+        internal void Update()
         {
             if (guiFailed)
                 return;
 
             try
             {
+                UpdateCapture();
                 if (!keymappingPageActive)
                 {
                     if (uiRoot != null)
@@ -131,6 +146,27 @@ namespace SprocketModAPI
                 error($"[SMA] keybinding UI disabled after compatibility error: {exception}");
             }
         }
+
+        public void Dispose()
+        {
+            input.InternalActionsChanged -= MarkDirty;
+            CancelCapture();
+            if (uiRoot != null)
+                UnityEngine.Object.Destroy(uiRoot);
+            uiCanvas = null;
+            uiRoot = null;
+            uiEntryObject = null;
+            uiEntryRect = null;
+            uiBackdrop = null;
+            uiWindow = null;
+            uiSearchInput = null;
+            uiStatus = null;
+            uiScroll = null;
+            uiContentObject = null;
+            uiRowObjects.Clear();
+        }
+
+        private void MarkDirty() => uiDirty = true;
 
         private void EnsureUi()
         {
@@ -249,7 +285,7 @@ namespace SprocketModAPI
             uiScroll.horizontal = false;
             uiScroll.vertical = true;
             uiScroll.movementType = ScrollRect.MovementType.Clamped;
-            uiScroll.scrollSensitivity = 28f;
+            uiScroll.scrollSensitivity = 0.2f;
 
             GameObject header = CreateImageNode(panel.transform, "Header Row", HeaderSurfaceColor, false);
             RectTransform headerRect = header.GetComponent<RectTransform>();
@@ -352,7 +388,7 @@ namespace SprocketModAPI
             }
             uiRowObjects.Clear();
 
-            ActionState[] list = actions.Values
+            ActionState[] list = input.Actions
                 .Where(action => string.IsNullOrWhiteSpace(search)
                     || action.Definition.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase)
                     || action.Definition.ModId.Contains(search, StringComparison.OrdinalIgnoreCase))
@@ -426,8 +462,11 @@ namespace SprocketModAPI
 
         private GameObject CreateActionRow(Transform parent, ActionState state)
         {
+            IReadOnlyList<BindingConflictInfo> conflicts = input.GetConflicts(state);
             GameObject row = CreateImageNode(parent, "Key Bind", KeyRowColor, true);
-            SetPreferredHeight(row, ActionRowHeight);
+            int conflictGroups = conflicts.GroupBy(conflict => (conflict.Slot, conflict.Binding)).Count();
+            int conflictLines = conflicts.Count == 0 ? 0 : 1 + conflictGroups + conflicts.Count;
+            SetPreferredHeight(row, ActionRowHeight + (conflictLines * ConflictLineHeight));
             AddBorder(row);
 
             HorizontalLayoutGroup layout = row.AddComponent<HorizontalLayoutGroup>();
@@ -439,7 +478,10 @@ namespace SprocketModAPI
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = true;
 
-            TextMeshProUGUI action = CreateText(row.transform, "Action", state.Definition.DisplayName, 14f, TextAlignmentOptions.Left, RowTextColor, false);
+            string actionText = conflicts.Count == 0
+                ? state.Definition.DisplayName
+                : $"{state.Definition.DisplayName}\n<size=10><color=#C28A38>Conflict:\n{FormatConflictSummary(conflicts)}</color></size>";
+            TextMeshProUGUI action = CreateText(row.transform, "Action", actionText, 14f, TextAlignmentOptions.Left, RowTextColor, false);
             SetFlexibleWidth(action.gameObject, 1f);
 
             GameObject primaryCell = CreateColumnCell(row.transform, "Primary", BindingColumnWidth, PrimaryContentPadding);
@@ -465,6 +507,20 @@ namespace SprocketModAPI
             return row;
         }
 
+        internal static string FormatConflictSummary(IReadOnlyList<BindingConflictInfo> conflicts)
+        {
+            var lines = new List<string>();
+            foreach (IGrouping<(int Slot, KeyChord Binding), BindingConflictInfo> group in conflicts
+                .GroupBy(conflict => (conflict.Slot, conflict.Binding))
+                .OrderBy(group => group.Key.Slot))
+            {
+                string slot = group.Key.Slot == 0 ? "Primary" : "Secondary";
+                lines.Add($"{slot} {DisplayBinding(group.Key.Binding)}");
+                lines.AddRange(group.Select(conflict => $"- {conflict.SourceName}"));
+            }
+            return string.Join("\n", lines);
+        }
+
         private static GameObject CreateColumnCell(Transform parent, string name, float width, int leftPadding = 0)
         {
             GameObject cell = CreateLayoutNode(parent, name);
@@ -482,6 +538,7 @@ namespace SprocketModAPI
 
         private void OpenWindow()
         {
+            input.RefreshNativeBindings();
             uiVisible = true;
             uiDirty = true;
         }
@@ -508,7 +565,7 @@ namespace SprocketModAPI
 
         private void ResetAllBindings()
         {
-            foreach (ActionState state in actions.Values)
+            foreach (ActionState state in input.Actions)
                 state.RestoreDefaults();
             uiDirty = true;
         }
@@ -634,7 +691,7 @@ namespace SprocketModAPI
                 "middlebutton" => "Mouse Middle",
                 _ => key.Length == 1 ? key.ToUpperInvariant() : key
             };
-            return chord.Modifiers == ModifierKeys.None ? key : $"{chord.Modifiers}: {key}";
+            return chord.Modifiers == ModifierKeys.None ? key : $"{chord.Modifiers}+{key}";
         }
 
         private static string DisplayModName(string modId)

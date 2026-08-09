@@ -10,3 +10,4 @@
 *.pdb
 *.log
 .DS_Store
+.codex/

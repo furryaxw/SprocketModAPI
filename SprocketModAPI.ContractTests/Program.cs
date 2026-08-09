@@ -6,6 +6,19 @@ internal static class Program
 {
     private static int Main()
     {
+        CheckPublicBehavior();
+        CheckServiceRegistryBehavior();
+        KeybindingStoreTests.Run();
+        BindingConflictIndexTests.Run();
+        BindingNormalizationTests.Run();
+        Console.WriteLine("Behavior contracts passed.");
+        CheckSourceLayout();
+        Console.WriteLine("Source-layout contracts passed.");
+        return 0;
+    }
+
+    private static void CheckPublicBehavior()
+    {
         Check(SprocketApi.ApiVersion == new Version(1, 0), "API version");
         Check(typeof(SprocketApi).Assembly.GetName().Version == new Version(0, 1, 0, 0), "release assembly version");
         Check(SprocketApi.IsCompatible(new Version(1, 0)), "same version compatible");
@@ -22,21 +35,59 @@ internal static class Program
         try { _ = new KeyChord("Z"); } catch (ArgumentException) { rejected = true; }
         Check(rejected, "display strings rejected as persistence paths");
         Check(typeof(IInputActionHandle).GetMethod("SetBinding") != null, "two-slot mutation contract");
-        CheckUiLayoutSource();
-        Console.WriteLine("SprocketModAPI contract tests passed (41/41).");
-        return 0;
     }
 
-    private static void CheckUiLayoutSource()
+    private static void CheckServiceRegistryBehavior()
+    {
+        string? loggedError = null;
+        var registry = new ServiceRegistry(message => loggedError = message);
+        var service = new TestService();
+        IDisposable registration = registry.Register<ITestService>(service);
+
+        Check(registry.TryGet(out ITestService? resolved) && ReferenceEquals(service, resolved), "registered service resolves by interface");
+
+        bool duplicateRejected = false;
+        try { registry.Register<ITestService>(new TestService()); }
+        catch (InvalidOperationException) { duplicateRejected = true; }
+        Check(duplicateRejected && loggedError != null && loggedError.Contains("Duplicate service registration"), "duplicate service registration rejected and logged");
+
+        SprocketApi.Attach(registry);
+        Check(SprocketApi.TryGetService<ITestService>(out ITestService? publicService) && ReferenceEquals(service, publicService), "public lookup uses service registry");
+        SprocketApi.Detach(registry);
+        Check(!SprocketApi.TryGetService<ITestService>(out _), "public lookup clears on registry detach");
+
+        registration.Dispose();
+        Check(service.Disposed, "service registration owns service lifetime");
+        Check(!registry.TryGet<ITestService>(out _), "unregistered service retains no stale reference");
+        registry.Dispose();
+
+        var shutdownRegistry = new ServiceRegistry(_ => { });
+        var shutdownService = new TestService();
+        shutdownRegistry.Register<ITestService>(shutdownService);
+        shutdownRegistry.Dispose();
+        Check(shutdownService.Disposed, "registry shutdown disposes remaining services");
+        Check(!shutdownRegistry.TryGet<ITestService>(out _), "registry shutdown clears remaining service references");
+    }
+
+    private static void CheckSourceLayout()
     {
         string repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string ui = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "InputManagerUi.cs"));
-        string observers = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "SettingsPageObservers.cs"));
-        string api = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Api.cs"));
+        string keybindingsRoot = Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Keybindings");
+        string coreRoot = Path.Combine(repositoryRoot, "SprocketModAPI", "Core");
+        string ui = File.ReadAllText(Path.Combine(keybindingsRoot, "KeybindingUiController.cs"));
+        string observers = File.ReadAllText(Path.Combine(keybindingsRoot, "SettingsPageObservers.cs"));
+        string conflictIndex = File.ReadAllText(Path.Combine(keybindingsRoot, "BindingConflictIndex.cs"));
+        string api = File.ReadAllText(Path.Combine(coreRoot, "Api.cs"));
         string readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         string releaseNotes = File.ReadAllText(Path.Combine(repositoryRoot, "RELEASE_NOTES.md"));
 
+        Check(api.Contains("IRuntimeModule[]") && api.Contains("foreach (IRuntimeModule module in modules)"), "Core hosts modules through common lifecycle");
+        Check(!api.Contains("InputService") && !api.Contains("UiService") && !api.Contains("KeybindingUiController"), "Core does not own module implementations");
         Check(!ui.Contains("[SMA-UI-") && !observers.Contains("[SMA-UI-") && !api.Contains("[SMA-UI-"), "temporary UI diagnostics removed");
+        Check(conflictIndex.Contains("Resources.FindObjectsOfTypeAll<InputActionAsset>()")
+            && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
+        Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
+        Check(ui.Contains("uiScroll.scrollSensitivity = 0.2f"), "mouse wheel sensitivity is reduced to 0.2");
         Check(readme.Contains("当前发行版本为 `0.1.0`，公共 API 版本为 `1.0`"), "README release and API versions are current");
         Check(releaseNotes.StartsWith("# Sprocket Mod API v0.1.0", StringComparison.Ordinal), "release notes version is current");
 
@@ -96,5 +147,13 @@ internal static class Program
     private static void Check(bool condition, string name)
     {
         if (!condition) throw new InvalidOperationException($"Contract failed: {name}");
+    }
+
+    private interface ITestService { }
+
+    private sealed class TestService : ITestService, IDisposable
+    {
+        internal bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
     }
 }
