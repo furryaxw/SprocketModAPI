@@ -11,6 +11,7 @@ internal static class Program
         KeybindingStoreTests.Run();
         BindingConflictIndexTests.Run();
         BindingNormalizationTests.Run();
+        InputRoutingTests.Run();
         Console.WriteLine("Behavior contracts passed.");
         CheckSourceLayout();
         Console.WriteLine("Source-layout contracts passed.");
@@ -77,6 +78,9 @@ internal static class Program
         string ui = File.ReadAllText(Path.Combine(keybindingsRoot, "KeybindingUiController.cs"));
         string observers = File.ReadAllText(Path.Combine(keybindingsRoot, "SettingsPageObservers.cs"));
         string conflictIndex = File.ReadAllText(Path.Combine(keybindingsRoot, "BindingConflictIndex.cs"));
+        string input = File.ReadAllText(Path.Combine(keybindingsRoot, "InputService.cs"));
+        string module = File.ReadAllText(Path.Combine(keybindingsRoot, "KeybindingsModule.cs"));
+        string nativeLease = File.ReadAllText(Path.Combine(keybindingsRoot, "NativeSettingsInputLease.cs"));
         string api = File.ReadAllText(Path.Combine(coreRoot, "Api.cs"));
         string readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         string releaseNotes = File.ReadAllText(Path.Combine(repositoryRoot, "RELEASE_NOTES.md"));
@@ -142,6 +146,16 @@ internal static class Program
         Check(observers.Contains("Content/Action buttons") && observers.Contains("OnRectTransformDimensionsChange"), "entry alignment listens to Action buttons rect changes");
         Check(observers.Contains("WorldToScreenPoint") && observers.Contains("ScreenPointToLocalPointInRectangle"), "entry left edge converts through screen space");
         Check(ui.Contains("uiEntryObject!.SetActive(!uiVisible && entryAlignmentReady)"), "entry stays hidden until event-driven alignment is ready");
+        Check(!input.Contains("FindObjectOfType<SettingsMenu>"), "input routing does not search for SettingsMenu every frame");
+        Check(input.Contains("EventSystem can retain an IL2CPP wrapper")
+            && input.Contains("catch (Exception)"),
+            "destroyed EventSystem selections are isolated during text-input probing");
+        Check(module.Contains("NotifySceneUnloaded(sceneName)") && input.Contains("route.BeginTransition()"),
+            "scene unload participates in the input transition gate");
+        Check(nativeLease.Contains("NativeSettingsInputLease.Acquire")
+            && nativeLease.Contains("snapshot.Restore()")
+            && nativeLease.Contains("sendNavigationEvents = false"),
+            "native settings input lease has capture, navigation isolation, and restoration paths");
     }
 
     private static void Check(bool condition, string name)

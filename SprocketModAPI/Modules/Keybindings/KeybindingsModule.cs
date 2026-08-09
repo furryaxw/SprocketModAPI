@@ -27,11 +27,15 @@ namespace SprocketModAPI
 
         public void SceneLoaded(int buildIndex, string sceneName)
         {
-            input?.NotifySceneChanged();
+            input?.NotifySceneLoaded(sceneName);
             Controller?.NotifySceneLoaded(sceneName);
         }
 
-        public void SceneUnloaded(int buildIndex, string sceneName) { }
+        public void SceneUnloaded(int buildIndex, string sceneName)
+        {
+            input?.NotifySceneUnloaded(sceneName);
+            Controller?.NotifySceneUnloaded(sceneName);
+        }
 
         public void Dispose()
         {
@@ -49,6 +53,8 @@ namespace SprocketModAPI
                 ClassInjector.RegisterTypeInIl2Cpp<ContentHierarchyWatcher>();
                 ClassInjector.RegisterTypeInIl2Cpp<KeymappingActivationWatcher>();
                 ClassInjector.RegisterTypeInIl2Cpp<ActionButtonsAlignmentWatcher>();
+                ClassInjector.RegisterTypeInIl2Cpp<PauseMenuActivationWatcher>();
+                ClassInjector.RegisterTypeInIl2Cpp<SettingsMenuActivationWatcher>();
             }
             catch (Exception exception)
             {

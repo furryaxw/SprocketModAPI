@@ -123,6 +123,8 @@ Gate = () => panelReady && !isEditingText
 
 API 的全局硬门禁优先于动作上下文和 `Gate`。游戏失焦、API 管理窗口打开或存在输入 block 时，动作不会绕过门禁。
 
+上下文优先级固定为 `TextInput > Settings > PauseMenu > Designer > MainMenu > Gameplay > OtherMenu`。场景或上下文变化后需要连续两个稳定更新才重新派发。硬门禁释放已按动作时只产生一次 `Released`；解除门禁后仍保持按下的旧物理按键不会补发 `Pressed`，必须先释放再重新按下。`Gate` 按动作独立求值，单个 gate 异常不会中止其他动作更新。
+
 ## 临时阻断输入
 
 模组打开自己的模态窗口时，应在窗口生命周期内持有 block：

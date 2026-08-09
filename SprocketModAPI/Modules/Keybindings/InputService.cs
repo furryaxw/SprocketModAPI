@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Il2CppSprocket.SettingConfiguration;
 using MelonLoader.Utils;
+using Il2CppTMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace SprocketModAPI
 {
@@ -20,8 +22,12 @@ namespace SprocketModAPI
         private readonly KeybindingStore store;
         private readonly BindingConflictIndex conflictIndex = new();
         private readonly NativeInputBindingReader nativeBindingReader;
+        private readonly HashSet<string> loadedScenes = new(StringComparer.OrdinalIgnoreCase);
+        private readonly InputRouteState route = new();
         private IReadOnlyList<NativeBindingSnapshot> nativeBindings = Array.Empty<NativeBindingSnapshot>();
         private InputContextMask context = InputContextMask.OtherMenu;
+        private bool settingsPageActive;
+        private bool pauseMenuActive;
         private bool disposed;
 
         internal InputService(Action<string> warn, Action<string> error)
@@ -33,6 +39,12 @@ namespace SprocketModAPI
             store = new KeybindingStore(filePath, warn);
             foreach (var item in store.Load())
                 retained[item.Key] = item.Value;
+            for (int index = 0; index < SceneManager.sceneCount; index++)
+            {
+                Scene scene = SceneManager.GetSceneAt(index);
+                if (scene.IsValid() && scene.isLoaded && !string.IsNullOrWhiteSpace(scene.name))
+                    loadedScenes.Add(scene.name);
+            }
         }
 
         public event Action<IReadOnlyList<ModActionDefinition>>? ActionsChanged;
@@ -68,7 +80,8 @@ namespace SprocketModAPI
                 return;
 
             context = DetectContext();
-            if (!Application.isFocused || externallyBlocked || blocks.Count != 0
+            bool routeReady = route.Observe(context);
+            if (!routeReady || !Application.isFocused || externallyBlocked || blocks.Count != 0
                 || context == InputContextMask.Settings || context == InputContextMask.TextInput)
             {
                 foreach (ActionState action in actions.Values)
@@ -80,12 +93,41 @@ namespace SprocketModAPI
                 action.Update(context);
         }
 
-        internal void NotifySceneChanged()
+        internal void NotifySceneLoaded(string sceneName)
         {
-            context = DetectContext();
-            foreach (ActionState action in actions.Values)
-                action.Suppress();
+            if (!string.IsNullOrWhiteSpace(sceneName))
+                loadedScenes.Add(sceneName);
+            BeginTransition();
             RefreshNativeBindings();
+        }
+
+        internal void NotifySceneUnloaded(string sceneName)
+        {
+            if (!string.IsNullOrWhiteSpace(sceneName))
+                loadedScenes.Remove(sceneName);
+            if (IsPauseScene(sceneName))
+                pauseMenuActive = false;
+            if (IsSettingsScene(sceneName))
+                settingsPageActive = false;
+            BeginTransition();
+        }
+
+        internal void NotifySceneChanged() => BeginTransition();
+
+        internal void NotifySettingsPageActive(bool active)
+        {
+            if (settingsPageActive == active)
+                return;
+            settingsPageActive = active;
+            BeginTransition();
+        }
+
+        internal void NotifyPauseMenuActive(bool active)
+        {
+            if (pauseMenuActive == active)
+                return;
+            pauseMenuActive = active;
+            BeginTransition();
         }
 
         internal void InitializeNativeBindings() => RefreshNativeBindings();
@@ -146,21 +188,42 @@ namespace SprocketModAPI
                 action.Definition.StableId, action.Definition.DisplayName, action.Primary, action.Secondary)), nativeBindings);
         }
 
-        private static InputContextMask DetectContext()
+        private void BeginTransition()
+        {
+            route.BeginTransition();
+            foreach (ActionState action in actions.Values)
+                action.Suppress();
+        }
+
+        private InputContextMask DetectContext()
         {
             string sceneName = SceneManager.GetActiveScene().name;
-            if (sceneName.Contains("Settings", StringComparison.OrdinalIgnoreCase))
-                return InputContextMask.Settings;
-            SettingsMenu? settings = UnityEngine.Object.FindObjectOfType<SettingsMenu>();
-            if (settings != null && settings.gameObject != null && settings.gameObject.activeInHierarchy)
-                return InputContextMask.Settings;
-            if (sceneName.Contains("Designer", StringComparison.OrdinalIgnoreCase))
-                return InputContextMask.Designer;
-            if (sceneName.Contains("Menu", StringComparison.OrdinalIgnoreCase))
-                return InputContextMask.MainMenu;
-            return sceneName.Contains("VehicleControl", StringComparison.OrdinalIgnoreCase)
-                ? InputContextMask.Gameplay
-                : InputContextMask.OtherMenu;
+            return SceneInputContextProbe.Resolve(sceneName, loadedScenes, pauseMenuActive, settingsPageActive,
+                IsTextInputSelected());
+        }
+
+        private static bool IsSettingsScene(string sceneName)
+            => sceneName.Contains("Settings", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsPauseScene(string sceneName)
+            => sceneName.Contains("Pause", StringComparison.OrdinalIgnoreCase)
+                || sceneName.Contains("EscapeMenu", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsTextInputSelected()
+        {
+            try
+            {
+                GameObject? selected = EventSystem.current?.currentSelectedGameObject;
+                if (selected == null || !selected.activeInHierarchy)
+                    return false;
+                return selected.GetComponentInParent<TMP_InputField>() != null
+                    || selected.GetComponentInParent<InputField>() != null;
+            }
+            catch (Exception)
+            {
+                // EventSystem can retain an IL2CPP wrapper for a selected object while its scene unloads.
+                return false;
+            }
         }
 
         private static void Validate(ModActionDefinition definition)
@@ -249,7 +312,8 @@ namespace SprocketModAPI
         private readonly Action changed;
         private readonly Action<ActionState> remove;
         private readonly BindingSlots bindings;
-        private bool previous;
+        private readonly ActionDispatchState dispatch = new();
+        private bool isPressed;
         private bool pressed;
         private bool released;
         private bool enabled = true;
@@ -257,6 +321,7 @@ namespace SprocketModAPI
         private InputAction? primaryAction;
         private InputAction? secondaryAction;
         private float pressedAt;
+        private int flagsFrame = -1;
 
         internal ActionState(ModActionDefinition definition, Action<string> error,
             Dictionary<string, string?> overrides, Action changed, Action<ActionState> remove)
@@ -276,52 +341,59 @@ namespace SprocketModAPI
         public event Action? Tapped;
         public bool WasPressedThisFrame => pressed;
         public bool WasReleasedThisFrame => released;
-        public bool IsPressed => previous;
+        public bool IsPressed => isPressed;
         public bool Enabled { get => enabled; set => enabled = value; }
         public KeyChord Primary => bindings.Primary;
         public KeyChord Secondary => bindings.Secondary;
 
         internal void Update(InputContextMask context)
         {
-            pressed = released = false;
-            bool allowed;
-            try
-            {
-                allowed = enabled && (Definition.Contexts & context) != 0 && (Definition.Gate?.Invoke() ?? true);
-            }
-            catch (Exception exception)
-            {
-                error($"[SMA] {Definition.StableId} gate failed: {exception}");
-                allowed = false;
-            }
+            ResetFrameFlags();
+            bool physicalPressed = ReadPhysicalState();
+            bool allowed = ActionGateEvaluator.IsAllowed(enabled, (Definition.Contexts & context) != 0,
+                Definition.Gate, exception => error($"[SMA] {Definition.StableId} gate failed: {exception}"));
+            ActionDispatchResult result = dispatch.Update(physicalPressed, allowed, true);
+            Apply(result, true);
+        }
 
-            bool now = allowed && (ChordPressed(bindings.Primary, primaryAction) || ChordPressed(bindings.Secondary, secondaryAction));
-            if (!previous && now)
+        internal void Suppress()
+        {
+            ResetFrameFlags();
+            pressed = false;
+            bool physicalPressed = ReadPhysicalState();
+            ActionDispatchResult result = dispatch.Update(physicalPressed, false);
+            Apply(result, false);
+        }
+
+        private void ResetFrameFlags()
+        {
+            int frame = Time.frameCount;
+            if (flagsFrame == frame)
+                return;
+            flagsFrame = frame;
+            pressed = released = false;
+        }
+
+        private void Apply(ActionDispatchResult result, bool allowTap)
+        {
+            if (result.PressedThisFrame)
             {
                 pressed = true;
                 pressedAt = Time.unscaledTime;
                 SafeInvoke(Pressed);
             }
-            if (previous && !now)
+            if (result.ReleasedThisFrame)
             {
                 released = true;
                 SafeInvoke(Released);
-                if (Time.unscaledTime - pressedAt <= InputSystem.settings.defaultTapTime)
+                if (allowTap && Time.unscaledTime - pressedAt <= InputSystem.settings.defaultTapTime)
                     SafeInvoke(Tapped);
             }
-            previous = now;
+            isPressed = result.IsPressed;
         }
 
-        internal void Suppress()
-        {
-            if (previous)
-            {
-                previous = false;
-                released = true;
-                SafeInvoke(Released);
-            }
-            pressed = false;
-        }
+        private bool ReadPhysicalState()
+            => ChordPressed(bindings.Primary, primaryAction) || ChordPressed(bindings.Secondary, secondaryAction);
 
         public void SetBinding(int slot, KeyChord? binding)
         {

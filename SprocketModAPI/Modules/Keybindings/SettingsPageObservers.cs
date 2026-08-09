@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -10,6 +11,7 @@ namespace SprocketModAPI
         private GameObject? observedSettingsContent;
         private GameObject? observedKeymapping;
         private RectTransform? observedActionButtons;
+        private readonly HashSet<int> activePauseMenus = new();
         private bool entryAlignmentReady;
 
         internal void InitializeSettingsPageListeners()
@@ -17,17 +19,76 @@ namespace SprocketModAPI
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
                 Scene scene = SceneManager.GetSceneAt(i);
-                if (scene.IsValid() && scene.isLoaded && string.Equals(scene.name, "SettingsMenu", StringComparison.Ordinal))
+                if (!scene.IsValid() || !scene.isLoaded)
+                    continue;
+                AttachPauseMenuListeners(scene);
+                if (string.Equals(scene.name, "SettingsMenu", StringComparison.Ordinal))
                     AttachSettingsContentListener(scene);
             }
         }
 
         internal void NotifySceneLoaded(string sceneName)
         {
+            Scene loadedScene = SceneManager.GetSceneByName(sceneName);
+            AttachPauseMenuListeners(loadedScene);
             if (!string.Equals(sceneName, "SettingsMenu", StringComparison.Ordinal))
                 return;
 
-            AttachSettingsContentListener(SceneManager.GetSceneByName("SettingsMenu"));
+            AttachSettingsContentListener(loadedScene);
+        }
+
+        private void AttachPauseMenuListeners(Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded)
+                return;
+
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                foreach (Transform candidate in root.GetComponentsInChildren<Transform>(true))
+                {
+                    if (candidate == null || candidate.gameObject == null || !IsPauseMenuObject(candidate.name))
+                        continue;
+                    if (candidate.GetComponent<PauseMenuActivationWatcher>() == null)
+                        candidate.gameObject.AddComponent<PauseMenuActivationWatcher>();
+                    if (candidate.gameObject.activeInHierarchy)
+                        NotifyPauseMenuActivationChanged(candidate.gameObject, true);
+                }
+            }
+        }
+
+        private static bool IsPauseMenuObject(string name)
+            => name.Contains("PauseMenu", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Pause Menu", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("EscapeMenu", StringComparison.OrdinalIgnoreCase);
+
+        internal void NotifyPauseMenuActivationChanged(GameObject pauseMenu, bool active)
+        {
+            if (pauseMenu == null)
+                return;
+            int instanceId = pauseMenu.GetInstanceID();
+            if (active)
+                activePauseMenus.Add(instanceId);
+            else
+                activePauseMenus.Remove(instanceId);
+            input.NotifyPauseMenuActive(activePauseMenus.Count != 0);
+        }
+
+        internal void NotifySettingsMenuActivationChanged(bool active)
+        {
+            input.NotifySettingsPageActive(active);
+        }
+
+        internal void NotifySceneUnloaded(string sceneName)
+        {
+            if (!string.Equals(sceneName, "SettingsMenu", StringComparison.Ordinal))
+                return;
+
+            ReleaseNativeInputLease();
+            observedSettingsContent = null;
+            observedKeymapping = null;
+            observedActionButtons = null;
+            entryAlignmentReady = false;
+            SetKeymappingPageActive(false);
         }
 
         private void AttachSettingsContentListener(Scene scene)
@@ -45,6 +106,10 @@ namespace SprocketModAPI
                 warn("[SMA] Settings Menu root was not found; the mod keybinding entry is unavailable.");
                 return;
             }
+
+            if (settingsRoot.GetComponent<SettingsMenuActivationWatcher>() == null)
+                settingsRoot.AddComponent<SettingsMenuActivationWatcher>();
+            input.NotifySettingsPageActive(settingsRoot.activeInHierarchy);
 
             AttachActionButtonsAlignmentListener(settingsRoot);
 
@@ -195,6 +260,7 @@ namespace SprocketModAPI
             keymappingPageActive = active;
             if (!active)
             {
+                ReleaseNativeInputLease();
                 uiVisible = false;
                 uiSearchInput?.DeactivateInputField();
                 CancelCapture();
@@ -231,5 +297,19 @@ namespace SprocketModAPI
             if (rect != null)
                 KeybindingsModule.Controller?.NotifyActionButtonsRectChanged(rect);
         }
+    }
+
+    public sealed class PauseMenuActivationWatcher : MonoBehaviour
+    {
+        private void OnEnable() => KeybindingsModule.Controller?.NotifyPauseMenuActivationChanged(gameObject, true);
+        private void OnDisable() => KeybindingsModule.Controller?.NotifyPauseMenuActivationChanged(gameObject, false);
+        private void OnDestroy() => KeybindingsModule.Controller?.NotifyPauseMenuActivationChanged(gameObject, false);
+    }
+
+    public sealed class SettingsMenuActivationWatcher : MonoBehaviour
+    {
+        private void OnEnable() => KeybindingsModule.Controller?.NotifySettingsMenuActivationChanged(true);
+        private void OnDisable() => KeybindingsModule.Controller?.NotifySettingsMenuActivationChanged(false);
+        private void OnDestroy() => KeybindingsModule.Controller?.NotifySettingsMenuActivationChanged(false);
     }
 }

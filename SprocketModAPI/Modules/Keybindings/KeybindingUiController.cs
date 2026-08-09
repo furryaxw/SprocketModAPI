@@ -118,6 +118,7 @@ namespace SprocketModAPI
             try
             {
                 UpdateCapture();
+                UpdateNativeInputLease();
                 if (!keymappingPageActive)
                 {
                     if (uiRoot != null)
@@ -141,6 +142,7 @@ namespace SprocketModAPI
                 guiFailed = true;
                 uiVisible = false;
                 CancelCapture();
+                ReleaseNativeInputLease();
                 if (uiRoot != null)
                     uiRoot.SetActive(false);
                 error($"[SMA] keybinding UI disabled after compatibility error: {exception}");
@@ -151,6 +153,7 @@ namespace SprocketModAPI
         {
             input.InternalActionsChanged -= MarkDirty;
             CancelCapture();
+            ReleaseNativeInputLease();
             if (uiRoot != null)
                 UnityEngine.Object.Destroy(uiRoot);
             uiCanvas = null;
@@ -541,6 +544,7 @@ namespace SprocketModAPI
             input.RefreshNativeBindings();
             uiVisible = true;
             uiDirty = true;
+            UpdateNativeInputLease();
         }
 
         private void CloseWindow()
@@ -548,6 +552,7 @@ namespace SprocketModAPI
             uiVisible = false;
             uiSearchInput?.DeactivateInputField();
             CancelCapture();
+            UpdateNativeInputLease();
         }
 
         private void OnSearchChanged(string value)
@@ -579,6 +584,7 @@ namespace SprocketModAPI
             modifierOnlyPath = null;
             uiSearchInput?.DeactivateInputField();
             uiDirty = true;
+            UpdateNativeInputLease();
         }
 
         private void CancelCapture()

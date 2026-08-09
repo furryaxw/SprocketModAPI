@@ -4,7 +4,7 @@
 
 API 监听 `Settings Menu/Content/Content` 的子节点变化；发现 `Keymapping` 后，再监听该页面的启用和禁用事件。只有 Keymapping 页面激活时才显示 `MOD KEYBINDINGS` 入口。入口左边界通过 `Action buttons` 的 RectTransform 事件保持对齐，不使用逐帧层级轮询。
 
-窗口按 `ModId` 分组显示已注册动作，提供搜索、滚动、两个绑定槽和单动作恢复默认值。模态背景拦截鼠标射线，点击窗口外不会穿透到原生设置页。
+窗口按 `ModId` 分组显示已注册动作，提供搜索、滚动、两个绑定槽和单动作恢复默认值。模态背景拦截鼠标射线；窗口或捕获状态激活时，API 会暂存原生 Keymapping 页中全部 `Selectable` 的 `interactable` 与 navigation、EventSystem 当前选中对象和导航事件状态，临时禁用原生交互，并在关闭、取消、页面停用、场景卸载或模块销毁时恢复快照。
 
 点击绑定槽后进入捕获状态：
 
@@ -54,14 +54,19 @@ keybindings.json.corrupt-YYYYMMDD-HHMMSS-fff.bak
 
 API 不修改游戏自身的 InputAction，只控制通过 `IInputService` 注册的模组动作。
 
+上下文由场景集合、菜单激活观察器和 EventSystem 当前选中对象共同解析。Sprocket `0.2.53.2` 在设计器和驾驶状态下保持 `Sandbox` 为 active scene，因此 API 分别以附加场景 `VehicleDesignerUI` 和 `VehicleControlUI` 识别 `Designer` 与 `Gameplay`。Settings 和 PauseMenu 使用激活生命周期观察器，文本输入则检查当前选中的 TMP 或 Unity InputField。固定优先级为：`TextInput > Settings > PauseMenu > Designer > MainMenu > Gameplay > OtherMenu`。
+
+场景加载、卸载或上下文变化会立即进入 transition blocked 状态。只有连续两个 Update 观察到相同上下文后才恢复普通动作派发；稳定前只允许动作状态收敛，不产生新的 `Pressed`。
+
 以下情况会抑制 API 动作：
 
 - 游戏窗口失去焦点。
-- 游戏设置界面或模组键位窗口打开。
+- 游戏设置界面、文本输入或模组键位窗口打开。
+- 暂停菜单覆盖 Gameplay。
 - 场景切换后的状态清理阶段。
 - 任一模组持有 `AcquireInputBlock` 返回的 block。
 
-若动作在门禁生效前处于按下状态，API 会派发一次 `Released` 并清理 held 状态。恢复焦点后不会补发失焦前的旧按键。
+若动作在门禁生效前处于按下状态，API 会派发一次 `Released` 并清理 held 状态，`WasReleasedThisFrame` 只在该帧为 `true`。恢复焦点或解除门禁时不会补发旧物理按键；必须先观察到完整释放，后续重新按下才会产生新的 `Pressed`。单个动作的 `Gate` 异常只禁用该动作当前帧，并记录稳定动作 ID 和完整异常，不阻断其他动作。
 
 ## 支持范围
 
