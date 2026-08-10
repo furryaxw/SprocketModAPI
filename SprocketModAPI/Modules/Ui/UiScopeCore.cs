@@ -8,7 +8,7 @@ namespace SprocketModAPI
     internal interface IUiBackend : IDisposable
     {
         UiCapabilitySnapshot Capabilities { get; }
-        UiCreateResult<IUiButtonHandle> CreateButton(string ownerId, UiButtonDefinition definition);
+        event EventHandler<UiStatusChangedEventArgs> StatusChanged;
         UiCreateResult<IUiMenuButtonHandle> CreateMenuButton(string ownerId, UiMenuButtonDefinition definition);
         void SceneUnloaded();
     }
@@ -24,23 +24,6 @@ namespace SprocketModAPI
         {
             this.ownerId = ownerId;
             this.backend = backend;
-        }
-
-        public Task<UiCreateResult<IUiButtonHandle>> CreateButtonAsync(
-            UiButtonDefinition definition,
-            CancellationToken cancellationToken = default)
-        {
-            if (disposed)
-                return Task.FromResult(UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.OwnerDisposed, "UI scope is disposed."));
-            if (cancellationToken.IsCancellationRequested)
-                return Task.FromResult(UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.Cancelled, "UI creation was cancelled."));
-            if (definition == null)
-                return Task.FromResult(UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.InvalidParent, "Button definition is null."));
-
-            UiCreateResult<IUiButtonHandle> result = backend.CreateButton(ownerId, definition);
-            if (result.Succeeded && result.Value != null)
-                handles.Add(result.Value);
-            return Task.FromResult(result);
         }
 
         public Task<UiCreateResult<IUiMenuButtonHandle>> CreateMenuButtonAsync(
@@ -95,28 +78,21 @@ namespace SprocketModAPI
         private readonly bool requireParent;
         private bool disposed;
 
-        internal FakeUiBackend(UiCapability capabilities = UiCapability.Button | UiCapability.MenuButton, bool requireParent = false)
+        internal FakeUiBackend(UiCapability capabilities = UiCapability.MenuButton, bool requireParent = false)
         {
             this.requireParent = requireParent;
             Capabilities = new UiCapabilitySnapshot { GameVersion = new Version(0, 2, 53, 2), Available = capabilities };
         }
 
-        public UiCapabilitySnapshot Capabilities { get; }
-        internal IReadOnlyList<FakeUiHandle> Handles => handles;
-
-        public UiCreateResult<IUiButtonHandle> CreateButton(string ownerId, UiButtonDefinition definition)
+        public UiCapabilitySnapshot Capabilities { get; private set; }
+        public event EventHandler<UiStatusChangedEventArgs>? StatusChanged;
+        internal void PublishStatus(UiCapabilitySnapshot capabilities)
         {
-            if (disposed)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.OwnerDisposed, "UI backend is disposed.");
-            if (!Capabilities.Supports(UiCapability.Button))
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.CapabilityUnavailable, "Button capability is unavailable.");
-            if (requireParent && definition.Parent is null)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.InvalidParent, "Button parent is null.");
-
-            var handle = new FakeUiHandle(ownerId, definition.Text, definition.Enabled, false, definition.OnClick);
-            handles.Add(handle);
-            return UiCreateResult<IUiButtonHandle>.Success(handle);
+            UiCapabilitySnapshot previous = Capabilities;
+            Capabilities = capabilities;
+            StatusChanged?.Invoke(this, new UiStatusChangedEventArgs(previous, capabilities));
         }
+        internal IReadOnlyList<FakeUiHandle> Handles => handles;
 
         public UiCreateResult<IUiMenuButtonHandle> CreateMenuButton(string ownerId, UiMenuButtonDefinition definition)
         {

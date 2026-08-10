@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
-[assembly: MelonInfo(typeof(SprocketModAPI.UiAcceptance.UiAcceptanceMod), "Sprocket Mod API UI Acceptance", "0.1.0", "furryAxw")]
+[assembly: MelonInfo(typeof(SprocketModAPI.UiAcceptance.UiAcceptanceMod), "Sprocket Mod API UI Acceptance", "0.2.0", "furryAxw")]
 [assembly: MelonGame("HD", "Sprocket")]
 [assembly: MelonAdditionalDependencies("SprocketModAPI")]
 
@@ -14,35 +14,52 @@ namespace SprocketModAPI.UiAcceptance
     public sealed class UiAcceptanceMod : MelonMod
     {
         private IUiScope? scope;
-        private IUiButtonHandle? button;
         private IUiMenuButtonHandle? menuButton;
+        private IUiService? ui;
         private GameObject? testRoot;
-        private bool attempted;
+        private bool menuButtonAttempted;
         private string currentScene = "";
 
         public override void OnInitializeMelon()
         {
-            if (!SprocketApi.TryGetService<IUiService>(out IUiService? ui))
+            if (!SprocketApi.TryGetService<IUiService>(out IUiService? resolvedUi))
             {
                 LoggerInstance.Error("[SMA-UI-ACCEPT] IUiService unavailable.");
                 return;
             }
 
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] capabilities={ui!.Capabilities.Available}");
-            LoggerInstance.Msg("[SMA-UI-ACCEPT] automatic test: creates two controls once in MainMenu, then waits for clicks; scene unload cleanup is observed in API logs.");
+            ui = resolvedUi!;
+            ui.StatusChanged += OnUiStatusChanged;
+            LoggerInstance.Msg($"[SMA-UI-ACCEPT] capabilities={ui.Capabilities.Available}");
+            LoggerInstance.Msg("[SMA-UI-ACCEPT] automatic test: creates one native Menu Button in MainMenu, then waits for a click; scene unload cleanup is observed in API logs.");
             scope = ui.CreateScope(new UiOwnerDefinition { ModId = "sprocketmodapi-ui-acceptance", DisplayName = "UI Acceptance" });
         }
 
-        public override void OnUpdate()
+        private void TryCreateControls(UiCapabilitySnapshot status)
         {
-            if (attempted || scope == null || !string.Equals(currentScene, "MainMenu", StringComparison.Ordinal))
+            if (scope == null)
                 return;
-            attempted = true;
+            if (string.Equals(currentScene, "MainMenu", StringComparison.Ordinal)
+                && status.IsMainMenuReady && status.Supports(UiCapability.MenuButton) && !menuButtonAttempted)
+            {
+                menuButtonAttempted = true;
+                CreateMenuButton();
+            }
+        }
+
+        private Transform? CreateAcceptanceParent()
+        {
             Transform? parent = FindAcceptanceParent();
             if (parent == null)
             {
-            LoggerInstance.Warning("[SMA-UI-ACCEPT] no interactive Canvas found; expected active Canvas with GraphicRaycaster.");
-                return;
+                LoggerInstance.Warning("[SMA-UI-ACCEPT] no interactive Canvas found; expected active Canvas with GraphicRaycaster.");
+                return null;
+            }
+            if (testRoot != null)
+            {
+                RectTransform? existingRoot = testRoot.GetComponent<RectTransform>();
+                if (existingRoot != null)
+                    return existingRoot;
             }
             testRoot = new GameObject("SMA UI Acceptance Test Root");
             Canvas testCanvas = testRoot.AddComponent<Canvas>();
@@ -61,22 +78,14 @@ namespace SprocketModAPI.UiAcceptance
             parent = testRect;
             EventSystem? eventSystem = EventSystem.current;
             LoggerInstance.Msg($"[SMA-UI-ACCEPT] input eventSystem={(eventSystem == null ? "none" : eventSystem.name)} module={(eventSystem?.currentInputModule == null ? "none" : eventSystem.currentInputModule.GetType().Name)} canvas={testCanvas.name} raycaster={testRaycaster.isActiveAndEnabled} sorting={testCanvas.sortingOrder} rootActive={testRoot.activeInHierarchy}");
+            return parent;
+        }
 
-            UiCreateResult<IUiButtonHandle> buttonResult = scope.CreateButtonAsync(new UiButtonDefinition
-            {
-                Parent = parent,
-                Text = "UI BUTTON TEST",
-                AnchoredPosition = new Vector2(0f, 30f),
-                OnClick = () => LoggerInstance.Msg("[SMA-UI-ACCEPT] button-clicked")
-            }).GetAwaiter().GetResult();
-            if (buttonResult.Succeeded)
-            {
-                button = buttonResult.Value;
-                LoggerInstance.Msg("[SMA-UI-ACCEPT] button-created");
-            }
-            else
-                LoggerInstance.Error($"[SMA-UI-ACCEPT] button-failed code={buttonResult.Failure} message={buttonResult.Message}");
-
+        private void CreateMenuButton()
+        {
+            Transform? parent = CreateAcceptanceParent();
+            if (parent == null || scope == null)
+                return;
             UiCreateResult<IUiMenuButtonHandle> menuResult = scope.CreateMenuButtonAsync(new UiMenuButtonDefinition
             {
                 Parent = parent,
@@ -96,10 +105,11 @@ namespace SprocketModAPI.UiAcceptance
 
         public override void OnDeinitializeMelon()
         {
-            button?.Dispose();
+            if (ui != null)
+                ui.StatusChanged -= OnUiStatusChanged;
+            ui = null;
             menuButton?.Dispose();
             scope?.Dispose();
-            button = null;
             menuButton = null;
             scope = null;
             if (testRoot != null)
@@ -108,12 +118,16 @@ namespace SprocketModAPI.UiAcceptance
             LoggerInstance.Msg("[SMA-UI-ACCEPT] disposed");
         }
 
+        private void OnUiStatusChanged(object? sender, UiStatusChangedEventArgs args)
+        {
+            UiCapabilitySnapshot current = args.Current;
+            LoggerInstance.Msg($"[SMA-UI-ACCEPT] status previousScene={args.Previous.SceneName} currentScene={current.SceneName} capabilities={current.Available} ready={current.IsMainMenuReady} generation={current.MenuGeneration}");
+            TryCreateControls(current);
+        }
+
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
-            attempted = !string.Equals(sceneName, "MainMenu", StringComparison.Ordinal)
-                || (menuButton != null && !menuButton.IsDisposed);
             currentScene = sceneName;
-            button = null;
             LoggerInstance.Msg($"[SMA-UI-ACCEPT] scene-loaded name={sceneName}");
         }
 
@@ -122,7 +136,6 @@ namespace SprocketModAPI.UiAcceptance
             if (testRoot != null)
                 UnityEngine.Object.Destroy(testRoot);
             testRoot = null;
-            button = null;
             LoggerInstance.Msg($"[SMA-UI-ACCEPT] scene-unloaded name={sceneName}");
         }
 

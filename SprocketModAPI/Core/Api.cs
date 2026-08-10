@@ -1,7 +1,7 @@
 using System;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(SprocketModAPI.ApiMod), "Sprocket Mod API", "0.1.0", "furryAxw")]
+[assembly: MelonInfo(typeof(SprocketModAPI.ApiMod), "Sprocket Mod API", "0.2.0", "furryAxw")]
 [assembly: MelonGame("HD", "Sprocket")]
 
 namespace SprocketModAPI
@@ -72,7 +72,7 @@ namespace SprocketModAPI
                 throw;
             }
 
-            LoggerInstance.Msg("Sprocket Mod API 0.1.0 initialized (API 1.1).");
+            LoggerInstance.Msg("Sprocket Mod API 0.2.0 initialized (API 1.1).");
         }
 
         public override void OnUpdate()

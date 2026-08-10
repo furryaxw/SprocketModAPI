@@ -1,8 +1,10 @@
-# Sprocket Mod API v0.1.0
+# Sprocket Mod API v0.2.0
 
 ## API 1.1
 
-- 新增基于已验证 Sprocket Tab 模板的 API 普通按钮和菜单按钮句柄。
+- 新增 `IUiService.StatusChanged`，提供场景、能力、主菜单 ready 状态和 generation 的只读快照；订阅者异常相互隔离。
+- UI 生命周期诊断统一改由 `UserData/SprocketModAPI/ui.debug.json` 控制，默认不输出 `[SMA-UI-TRACE]`。
+- 仅保留基于已验证 Sprocket Tab 模板的 Menu Button 句柄；普通 Button 因实机异常已撤回。
 - 将公共文档拆分为按键注册和 UI 注册，并补充原生主菜单高级位置接口。
 - 新增 scope 所有权、结构化创建失败、主线程派发和场景清理。
 - Selection、Prompt 及其他原生 UI 适配器仍属于后续工作。

@@ -1,10 +1,12 @@
 # Sprocket Mod API
 
-API 文档：[公共 API 索引](docs/api.md)、[按键注册](docs/keybindings-api.md)、[UI 注册](docs/ui-api.md)和[键位管理](docs/keybindings.md)。
+API 文档：[公共 API 索引](docs/api.md)、[按键注册](docs/keybindings-api.md)、[UI 注册](docs/ui-api.md)、[键位管理](docs/keybindings.md)和[键位自助排障](docs/keybindings-debug.md)。
+
+UI 服务提供 `StatusChanged` 状态快照事件，用于观察场景、能力、主菜单 ready 状态和 generation；UI 诊断由运行时生成的 `UserData/SprocketModAPI/ui.debug.json` 控制，默认关闭。
 
 面向《Sprocket》MelonLoader 模组的公共运行库。当前公共接口提供统一键位注册、输入路由、配置持久化和游戏内模组键位管理窗口。
 
-当前发行版本为 `0.1.0`，公共 API 版本为 `1.1`。发行版本与 API 兼容版本相互独立。目标环境为 Sprocket `0.2.53.2`、MelonLoader net6 和 Unity Input System。
+当前发行版本为 `0.2.0`，公共 API 版本为 `1.1`。发行版本与 API 兼容版本相互独立。目标环境为 Sprocket `0.2.53.2`、MelonLoader net6 和 Unity Input System。
 
 ## 功能
 
@@ -78,7 +80,7 @@ dotnet run --configuration Release `
 
 - v1 仅支持键盘和鼠标。
 - 管理窗口依赖当前 Sprocket 设置场景和 UI 结构，游戏更新后可能需要适配。
-- UI 首批提供 API-owned Button 与基于已验证 Sprocket `Tab` 模板的 Menu Button；Selection、Prompt 和其他原生 UI 适配器仍需后续盘点和游戏内验证。
+- UI 当前只提供基于已验证 Sprocket `Tab` 模板的 Menu Button；普通 Button 因实机视觉和接线问题已撤回，Selection、Prompt 和其他原生 UI 适配器仍需后续盘点和游戏内验证。
 - 原生冲突导入只读取当前已加载且能明确解析为键盘、鼠标或左右修饰键组合的绑定；无法可靠解释的复合绑定不会产生推测性警告。
 - 构建和离线测试通过不代表所有分辨率、主菜单入口和暂停菜单入口均已完成游戏内验收。
 

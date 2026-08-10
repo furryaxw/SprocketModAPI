@@ -9,22 +9,19 @@ if (!SprocketApi.TryGetService<IUiService>(out var ui))
 var scope = ui.CreateScope(new UiOwnerDefinition { ModId = "example-mod" });
 ```
 
-`UiCapabilitySnapshot.Available` 表示当前可用能力，使用 `Supports(UiCapability.Button)` 或 `Supports(UiCapability.MenuButton)` 检查。创建失败通过 `UiCreateResult<T>` 返回：检查 `Succeeded`，成功时读取 `Value`，失败时读取 `Failure` 和 `Message`。
+`UiCapabilitySnapshot.Available` 表示当前可用能力，使用 `Supports(UiCapability.MenuButton)` 检查。创建失败通过 `UiCreateResult<T>` 返回：检查 `Succeeded`，成功时读取 `Value`，失败时读取 `Failure` 和 `Message`。
 
-## API 管理的普通按钮
+## 状态快照与调试
 
-`CreateButtonAsync` 使用经过验证的隐藏模板创建普通 Unity `Button`。对象由 API 管理，不属于 Sprocket 主菜单的原生按钮池。
+`IUiService.StatusChanged` 在 Unity 主线程发布不可变的 `UiStatusChangedEventArgs`。`Previous` 和 `Current` 是完整的 `UiCapabilitySnapshot`，包括 `GameVersion`、`Available`、`SceneName`、`IsMainMenuReady` 与 `MenuGeneration`；事件参数不会暴露 Unity 对象或内部句柄。仅实际状态变化会触发事件。订阅者异常会被隔离并记录，不会中断 UI 生命周期；服务释放后不再发布事件。
 
-`UiButtonDefinition` 字段：`Parent`（必须位于启用的 Canvas 和 GraphicRaycaster 下）、`Text`、`Enabled`、可选 `Size`、可选 `AnchoredPosition` 和 `OnClick`。
+API 首次运行会创建 `UserData/SprocketModAPI/ui.debug.json`：
 
-```csharp
-var result = await scope.CreateButtonAsync(new UiButtonDefinition
-{
-    Parent = parentTransform,
-    Text = "Open panel",
-    OnClick = OpenPanel
-});
+```json
+{ "Enabled": false, "LogLifecycle": true, "LogEveryFrame": false }
 ```
+
+只有 `Enabled` 为 `true` 时才输出 `[SMA-UI-TRACE]`。配置无法读取时会记录一次 Warning，并以关闭状态继续运行。
 
 ## 原生菜单按钮
 
@@ -58,4 +55,4 @@ var result = await scope.CreateMainMenuButtonAsync(new UiMenuButtonDefinition
 
 原生模板不可用或找不到指定锚点时，接口会返回结构化失败，不会把按钮静默放到错误位置。只有已确认的 Sprocket `Tab` 和 `MenuPanel` 可用时才能创建菜单按钮。所有 UI 回调都在 Unity 主线程执行。
 
-常见 `UiFailureCode` 包括 `CapabilityUnavailable`、`TemplateNotFound`、`InvalidParent`、`OwnerDisposed`、`Cancelled` 和 `CreationFailed`。普通按钮由 API 销毁；菜单按钮属于游戏对象池，不应由模组直接调用 Unity `Destroy`。
+常见 `UiFailureCode` 包括 `CapabilityUnavailable`、`TemplateNotFound`、`InvalidParent`、`OwnerDisposed`、`Cancelled` 和 `CreationFailed`。菜单按钮属于游戏对象池，不应由模组直接调用 Unity `Destroy`。

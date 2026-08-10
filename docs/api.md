@@ -1,6 +1,6 @@
 # 公共 API
 
-Sprocket Mod API 当前发行版本为 `0.1.0`，公共 API 版本为 `1.1`。
+Sprocket Mod API 当前发行版本为 `0.2.0`，公共 API 版本为 `1.1`。
 
 ```csharp
 if (!SprocketApi.IsCompatible(new Version(1, 0)))

@@ -22,7 +22,8 @@ internal static class Program
     private static void CheckPublicBehavior()
     {
         Check(SprocketApi.ApiVersion == new Version(1, 1), "API version");
-        Check(typeof(SprocketApi).Assembly.GetName().Version == new Version(0, 1, 0, 0), "release assembly version");
+        Version? releaseVersion = typeof(SprocketApi).Assembly.GetName().Version;
+        Check(releaseVersion == new Version(0, 2, 0, 0), $"release assembly version ({releaseVersion})");
         Check(SprocketApi.IsCompatible(new Version(1, 0)), "same version compatible");
         Check(!SprocketApi.IsCompatible(new Version(2, 0)), "different major rejected");
         Check(SprocketApi.IsCompatible(new Version(1, 1)), "newer UI minor is compatible");
@@ -106,9 +107,6 @@ internal static class Program
             && uiBackend.Contains("panel.GetComponentsInChildren<Tab>(true)")
             && uiBackend.Contains("Resources.FindObjectsOfTypeAll<Tab>()")
             && uiBackend.Contains("candidate.hideFlags != HideFlags.HideAndDontSave")
-            && uiBackend.Contains("Resources.FindObjectsOfTypeAll<Button>()")
-            && uiBackend.Contains("buttonTemplate!.gameObject")
-            && uiBackend.Contains("Instantiate(menuButtonTemplate.gameObject")
             && uiBackend.Contains("UiFailureCode.TemplateNotFound"),
             "Menu Button uses a probed native Tab template and fails closed");
         Check(uiBackend.Contains("GetComponent<RectTransform>()")
@@ -116,10 +114,13 @@ internal static class Program
             "UI roots use real RectTransform components without unsafe Transform casts");
         Check(uiBackend.Contains("GetComponentInParent<Canvas>()")
             && uiBackend.Contains("GetComponent<GraphicRaycaster>()")
-            && uiBackend.Contains("Button parent must be under an active Canvas with GraphicRaycaster"),
-            "UI creation requires an interactive Canvas parent");
-        Check(uiBackend.Contains("try { button.interactable = false; } catch (Exception) { }")
-            && uiBackend.Contains("Native pooled objects are game-owned"),
+            && uiBackend.Contains("Menu button parent must be under an active Canvas with GraphicRaycaster"),
+            "Menu Button creation requires an interactive Canvas parent");
+        Check(uiContracts.Contains("interface IUiButtonHandle") && uiContracts.Contains("new bool IsDisposed")
+            && !uiContracts.Contains("UiButtonDefinition") && !uiContracts.Contains("CreateButtonAsync")
+            && !uiBackend.Contains("FindButtonTemplate") && !uiBackend.Contains("UiCapability.Button"),
+            "ordinary Button capability and factory are removed while Menu Button handle ABI remains compatible");
+        Check(uiBackend.Contains("Native pooled objects are game-owned"),
             "scene cleanup tolerates Unity-owned controls already destroyed by unload");
         Check(uiBackend.Contains("menuRect.anchorMin = new Vector2(0.5f, 0.5f)")
             && uiBackend.Contains("menuRect.sizeDelta = definition.Size ?? new Vector2(180f, 36f)"),
@@ -129,8 +130,8 @@ internal static class Program
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
         Check(ui.Contains("uiScroll.scrollSensitivity = 0.2f"), "mouse wheel sensitivity is reduced to 0.2");
-        Check(readme.Contains("当前发行版本为 `0.1.0`，公共 API 版本为 `1.1`"), "README release and API versions are current");
-        Check(releaseNotes.StartsWith("# Sprocket Mod API v0.1.0", StringComparison.Ordinal), "release notes version is current");
+        Check(readme.Contains("当前发行版本为 `0.2.0`，公共 API 版本为 `1.1`"), "README release and API versions are current");
+        Check(releaseNotes.StartsWith("# Sprocket Mod API v0.2.0", StringComparison.Ordinal), "release notes version is current");
 
         int headerPanel = ui.IndexOf("CreateHeaderPanel(uiWindow.transform)", StringComparison.Ordinal);
         int searchPanel = ui.IndexOf("CreateSearchPanel(uiWindow.transform)", StringComparison.Ordinal);

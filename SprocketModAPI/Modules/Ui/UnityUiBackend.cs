@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Il2CppTMPro;
 using Il2CppSprocket.UI;
 using Il2CppSprocket.Selection;
 using Il2CppSprocket;
@@ -16,31 +15,36 @@ namespace SprocketModAPI
 {
     internal sealed class UiService : IUiService, IDisposable
     {
-        private readonly Action<string> warn;
         private readonly Action<string> error;
         private readonly int mainThreadId;
         private readonly Queue<Action> pending = new();
         private readonly List<UiScopeCore> scopes = new();
         private readonly UnityUiBackend backend;
         private readonly IUiBackend dispatchedBackend;
+        private readonly UiStatusBroadcaster statusBroadcaster;
         private bool disposed;
 
         internal UiService(Action<string> warn, Action<string> error)
         {
-            this.warn = warn;
             this.error = error;
             mainThreadId = Environment.CurrentManagedThreadId;
-            backend = new UnityUiBackend(error);
-            dispatchedBackend = new DispatchingUiBackend(
-                backend,
-                action => Invoke(action),
-                action => Invoke(action),
-                action => Invoke(action),
-                action => Invoke(action),
-                action => Invoke(action));
+            statusBroadcaster = new UiStatusBroadcaster(warn);
+            backend = new UnityUiBackend(warn, error);
+            backend.StatusChanged += OnBackendStatusChanged;
+            dispatchedBackend = new DispatchingUiBackend(backend, action => Invoke(action), action => Invoke(action), action => Invoke(action), action => Invoke(action));
         }
 
         public UiCapabilitySnapshot Capabilities => backend.Capabilities;
+        public event EventHandler<UiStatusChangedEventArgs> StatusChanged
+        {
+            add => statusBroadcaster.StatusChanged += value;
+            remove => statusBroadcaster.StatusChanged -= value;
+        }
+
+        private void OnBackendStatusChanged(object? sender, UiStatusChangedEventArgs args)
+        {
+            if (!disposed) statusBroadcaster.Publish(this, args);
+        }
 
         public IUiScope CreateScope(UiOwnerDefinition owner)
         {
@@ -116,6 +120,8 @@ namespace SprocketModAPI
                 scope.Dispose();
             scopes.Clear();
             backend.Dispose();
+            backend.StatusChanged -= OnBackendStatusChanged;
+            statusBroadcaster.Dispose();
             lock (pending)
             {
                 pending.Clear();
@@ -125,33 +131,34 @@ namespace SprocketModAPI
 
     internal sealed class UnityUiBackend : IUiBackend
     {
+        private static readonly Version SupportedGameVersion = new(0, 2, 53, 2);
+        private readonly UiDebugLog debug;
         private readonly Action<string> error;
         private readonly List<IUiMenuButtonHandle> handles = new();
         private bool disposed;
         private Tab? menuButtonTemplate;
-        private Button? buttonTemplate;
         private MenuPanel? menuPanel;
         private MainMenu? mainMenu;
         private IntPtr observedMenuPointer;
         private int menuTransitionFrames;
         private int menuGeneration;
-        private int traceFrame;
         private string currentSceneName = "";
 
-        internal UnityUiBackend(Action<string> error)
+        internal UnityUiBackend(Action<string> warn, Action<string> error)
         {
             this.error = error;
-            Capabilities = new UiCapabilitySnapshot { GameVersion = new Version(0, 2, 53, 2), Available = UiCapability.Button };
+            debug = new UiDebugLog(UiDebugSettings.Load(warn), error);
+            Capabilities = new UiCapabilitySnapshot { GameVersion = SupportedGameVersion };
             RefreshCapabilities();
         }
 
         public UiCapabilitySnapshot Capabilities { get; private set; }
+        public event EventHandler<UiStatusChangedEventArgs>? StatusChanged;
 
         internal void Update()
         {
             if (disposed)
                 return;
-            traceFrame++;
             if (!string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase))
                 return;
             if (mainMenu == null)
@@ -173,30 +180,33 @@ namespace SprocketModAPI
                 observedMenuPointer = activeMenuPointer;
                 menuGeneration++;
                 menuTransitionFrames = 2;
-                error($"[SMA-UI-TRACE] menu-transition generation={menuGeneration} pointer=0x{activeMenuPointer.ToInt64():X} title={activeMenu?.Title ?? "<null>"}");
+                debug.Lifecycle($"menu-transition generation={menuGeneration} pointer=0x{activeMenuPointer.ToInt64():X} title={activeMenu?.Title ?? "<null>"}");
                 foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
                     if (handle is UnityMenuButtonHandle nativeHandle)
                     {
                         nativeHandle.InvalidateForScene();
                     }
+                PublishStatusIfChanged(false);
             }
             if (menuTransitionFrames > 0)
             {
                 menuTransitionFrames--;
-                error($"[SMA-UI-TRACE] menu-blocked generation={menuGeneration} remaining={menuTransitionFrames}");
+                debug.Lifecycle($"menu-blocked generation={menuGeneration} remaining={menuTransitionFrames}");
+                PublishStatusIfChanged(false);
                 return;
             }
             bool mainMenuScene = string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase);
             bool mainMenuPanelReady = menuPanel != null && menuPanel.isActiveAndEnabled && mainMenuScene;
             if (activeMenu == null && !mainMenuPanelReady)
             {
-                if (traceFrame % 30 == 0)
-                    error($"[SMA-UI-TRACE] menu-skip generation={menuGeneration} reason=no-active-menu scene={currentSceneName} panelActive={menuPanel?.isActiveAndEnabled ?? false} panelVisible={menuPanel?.Visible ?? false}");
+                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=no-active-menu scene={currentSceneName} panelActive={menuPanel?.isActiveAndEnabled ?? false} panelVisible={menuPanel?.Visible ?? false}");
+                PublishStatusIfChanged(false);
                 return;
             }
             if (activeMenu != null && !string.Equals(activeMenu.Title, "Main Menu", StringComparison.OrdinalIgnoreCase))
             {
-                error($"[SMA-UI-TRACE] menu-skip generation={menuGeneration} reason=title title={activeMenu.Title}");
+                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=title title={activeMenu.Title}");
+                PublishStatusIfChanged(false);
                 return;
             }
             foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
@@ -204,17 +214,17 @@ namespace SprocketModAPI
                 if (handle is UnityMenuButtonHandle nativeHandle)
                 {
                     if (nativeHandle.EnsureRegistered(menuPanel, menuGeneration, CreateRegisteredTab))
-                        error($"[SMA-UI-TRACE] register generation={menuGeneration} text={nativeHandle.Text}");
+                        debug.Lifecycle($"register generation={menuGeneration} text={nativeHandle.Text}");
                     if (nativeHandle.ConsumeActivityChange(out bool activeSelf, out bool activeInHierarchy, out string path))
                         error($"[SMA-UI] native-registration text={nativeHandle.Text} activeSelf={activeSelf} activeInHierarchy={activeInHierarchy} path={path}");
                 }
             }
+            PublishStatusIfChanged(true);
         }
 
         internal void RefreshCapabilities()
         {
             menuButtonTemplate = null;
-            buttonTemplate = null;
             menuPanel = null;
             mainMenu = null;
             observedMenuPointer = IntPtr.Zero;
@@ -276,33 +286,14 @@ namespace SprocketModAPI
                         break;
                     }
                 }
-                Button[] buttonCandidates = Resources.FindObjectsOfTypeAll<Button>();
-                foreach (Button candidate in buttonCandidates)
-                {
-                    if (candidate == null || candidate.hideFlags != HideFlags.HideAndDontSave)
-                        continue;
-                    RectTransform? rect = candidate.GetComponent<RectTransform>();
-                    Image? image = candidate.GetComponent<Image>();
-                    if (rect == null || image == null || rect.rect.width <= 1f || rect.rect.height <= 1f
-                        || rect.rect.width > 600f || rect.rect.height > 100f)
-                        continue;
-                    buttonTemplate = candidate;
-                    break;
-                }
             }
             catch (Exception exception)
             {
                 error($"[SMA-UI] Menu Button template probe failed: {exception}");
             }
 
-            error($"[SMA-UI] template probe menuPanel={(menuPanel == null ? "none" : GetHierarchyPath(menuPanel.transform))} tab={(menuButtonTemplate == null ? "none" : GetHierarchyPath(menuButtonTemplate.transform))}");
-
-            Capabilities = new UiCapabilitySnapshot
-            {
-                GameVersion = new Version(0, 2, 53, 2),
-                Available = (buttonTemplate == null ? UiCapability.None : UiCapability.Button)
-                    | (menuButtonTemplate == null ? UiCapability.None : UiCapability.MenuButton)
-            };
+            debug.Lifecycle($"template probe menuPanel={(menuPanel == null ? "none" : GetHierarchyPath(menuPanel.transform))} tab={(menuButtonTemplate == null ? "none" : GetHierarchyPath(menuButtonTemplate.transform))}");
+            PublishStatusIfChanged(false, menuButtonTemplate == null ? UiCapability.None : UiCapability.MenuButton);
         }
 
         internal void SceneLoaded(string sceneName)
@@ -316,33 +307,7 @@ namespace SprocketModAPI
                 menuTransitionFrames = 0;
             }
             RefreshCapabilities();
-            error($"[SMA-UI-TRACE] scene-loaded scene={currentSceneName}");
-        }
-
-        public UiCreateResult<IUiButtonHandle> CreateButton(string ownerId, UiButtonDefinition definition)
-        {
-            if (buttonTemplate == null)
-                RefreshCapabilities();
-            if (disposed)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.OwnerDisposed, "UI backend is disposed.");
-            if (definition.Parent == null)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.InvalidParent, "Button parent is null.");
-            Canvas? canvas = definition.Parent.GetComponentInParent<Canvas>();
-            if (canvas == null || !canvas.isActiveAndEnabled || canvas.GetComponent<GraphicRaycaster>() == null)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.InvalidParent, "Button parent must be under an active Canvas with GraphicRaycaster.");
-            if (!Capabilities.Supports(UiCapability.Button) || buttonTemplate == null)
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.CapabilityUnavailable, "Button capability is unavailable.");
-
-            try
-            {
-                UiCreateResult<UnityButtonHandle> result = Create(ownerId, definition.Parent, definition.Text ?? "", definition.Enabled, false, definition.Size, definition.AnchoredPosition, definition.OnClick);
-                return result.Succeeded ? UiCreateResult<IUiButtonHandle>.Success(result.Value!) : UiCreateResult<IUiButtonHandle>.Failed(result.Failure, result.Message);
-            }
-            catch (Exception exception)
-            {
-                error($"[SMA-UI] create button failed owner={ownerId}: {exception}");
-                return UiCreateResult<IUiButtonHandle>.Failed(UiFailureCode.CreationFailed, exception.Message);
-            }
+            debug.Lifecycle($"scene-loaded scene={currentSceneName}");
         }
 
         public UiCreateResult<IUiMenuButtonHandle> CreateMenuButton(string ownerId, UiMenuButtonDefinition definition)
@@ -501,35 +466,6 @@ namespace SprocketModAPI
             return true;
         }
 
-        private UiCreateResult<UnityButtonHandle> Create(string ownerId, Transform parent, string text, bool enabled, bool selected, Vector2? size, Vector2? anchoredPosition, Action? callback)
-        {
-            GameObject? root = null;
-            try
-            {
-                root = UnityEngine.Object.Instantiate(buttonTemplate!.gameObject, parent, false);
-                RectTransform rect = root.GetComponent<RectTransform>() ?? throw new InvalidOperationException("Button template has no RectTransform.");
-                Button button = root.GetComponent<Button>() ?? throw new InvalidOperationException("Button template has no Button component.");
-                TextMeshProUGUI? label = root.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (label == null) throw new InvalidOperationException("Button template has no TMP label.");
-                label.text = text ?? "";
-                label.raycastTarget = false;
-                rect.sizeDelta = size ?? new Vector2(180f, 36f);
-                if (anchoredPosition.HasValue) rect.anchoredPosition = anchoredPosition.Value;
-                UnityAction? action = callback == null ? null : (UnityAction)callback;
-                if (action != null) button.onClick.AddListener(action);
-                var handle = new UnityButtonHandle(root, button, label, action, () => handles.RemoveAll(item => item.IsDisposed));
-                handle.Enabled = enabled;
-                handle.Selected = selected;
-                handles.Add(handle);
-                return UiCreateResult<UnityButtonHandle>.Success(handle);
-            }
-            catch
-            {
-                if (root != null) UnityEngine.Object.Destroy(root);
-                throw;
-            }
-        }
-
         public void SceneUnloaded() => SceneUnloaded("MainMenu");
 
         internal void SceneUnloaded(string sceneName)
@@ -542,7 +478,6 @@ namespace SprocketModAPI
                     handle.Dispose();
             }
             menuButtonTemplate = null;
-            buttonTemplate = null;
             bool unloadingMainMenu = string.Equals(sceneName, "MainMenu", StringComparison.OrdinalIgnoreCase);
             if (unloadingMainMenu)
             {
@@ -556,8 +491,9 @@ namespace SprocketModAPI
             else if (menuPanel != null)
             {
                 currentSceneName = "MainMenu";
-                error($"[SMA-UI-TRACE] scene-unloaded-overlay scene={sceneName} resume=MainMenu");
+                debug.Lifecycle($"scene-unloaded-overlay scene={sceneName} resume=MainMenu");
             }
+            PublishStatusIfChanged(false);
         }
 
         public void Dispose()
@@ -565,53 +501,31 @@ namespace SprocketModAPI
             if (disposed)
                 return;
             disposed = true;
+            StatusChanged = null;
             SceneUnloaded("MainMenu");
         }
 
-        private sealed class UnityButtonHandle : IUiMenuButtonHandle
+        private void PublishStatusIfChanged(bool isMainMenuReady, UiCapability? available = null)
         {
-            private readonly GameObject root;
-            private readonly Button button;
-            private readonly TextMeshProUGUI label;
-            private readonly UnityAction? action;
-            private readonly Action collect;
-            private bool disposed;
-            private bool selected;
-
-            internal UnityButtonHandle(GameObject root, Button button, TextMeshProUGUI label, UnityAction? action, Action collect)
+            UiCapabilitySnapshot next = new UiCapabilitySnapshot
             {
-                this.root = root;
-                this.button = button;
-                this.label = label;
-                this.action = action;
-                this.collect = collect;
-            }
-
-            public bool IsDisposed => disposed;
-            public bool Enabled { get => !disposed && button.interactable; set { if (!disposed) button.interactable = value; } }
-            public string Text { get => label.text; set { if (!disposed) label.text = value ?? ""; } }
-            public bool Selected
-            {
-                get => !disposed && selected;
-                set
-                {
-                    if (disposed) return;
-                    selected = value;
-                    Image? image = root.GetComponent<Image>();
-                    if (image != null) image.color = value ? new Color(0.76f, 0.54f, 0.22f) : new Color(0.17f, 0.18f, 0.19f);
-                }
-            }
-
-            public void Dispose()
-            {
-                if (disposed) return;
-                disposed = true;
-                try { button.interactable = false; } catch (Exception) { }
-                try { if (action != null) button.onClick.RemoveListener(action); } catch (Exception) { }
-                try { if (root != null) UnityEngine.Object.Destroy(root); } catch (Exception) { }
-                try { collect(); } catch (Exception) { }
-            }
+                GameVersion = SupportedGameVersion,
+                Available = available ?? Capabilities.Available,
+                SceneName = currentSceneName,
+                IsMainMenuReady = isMainMenuReady,
+                MenuGeneration = menuGeneration
+            };
+            UiCapabilitySnapshot previous = Capabilities;
+            if (SameStatus(previous, next))
+                return;
+            Capabilities = next;
+            StatusChanged?.Invoke(this, new UiStatusChangedEventArgs(previous, next));
         }
+
+        private static bool SameStatus(UiCapabilitySnapshot left, UiCapabilitySnapshot right) =>
+            left.GameVersion == right.GameVersion && left.Available == right.Available
+            && string.Equals(left.SceneName, right.SceneName, StringComparison.Ordinal)
+            && left.IsMainMenuReady == right.IsMainMenuReady && left.MenuGeneration == right.MenuGeneration;
 
         private sealed class UnityMenuButtonHandle : IUiMenuButtonHandle
         {
@@ -735,7 +649,6 @@ namespace SprocketModAPI
     internal sealed class DispatchingUiBackend : IUiBackend
     {
         private readonly IUiBackend inner;
-        private readonly Func<Func<UiCreateResult<IUiButtonHandle>>, UiCreateResult<IUiButtonHandle>> invokeButton;
         private readonly Func<Func<UiCreateResult<IUiMenuButtonHandle>>, UiCreateResult<IUiMenuButtonHandle>> invokeMenu;
         private readonly Action<Action> invokeVoid;
         private readonly Func<Func<bool>, bool> invokeBool;
@@ -743,14 +656,12 @@ namespace SprocketModAPI
 
         internal DispatchingUiBackend(
             IUiBackend inner,
-            Func<Func<UiCreateResult<IUiButtonHandle>>, UiCreateResult<IUiButtonHandle>> invokeButton,
             Func<Func<UiCreateResult<IUiMenuButtonHandle>>, UiCreateResult<IUiMenuButtonHandle>> invokeMenu,
             Action<Action> invokeVoid,
             Func<Func<bool>, bool> invokeBool,
             Func<Func<string>, string> invokeString)
         {
             this.inner = inner;
-            this.invokeButton = invokeButton;
             this.invokeMenu = invokeMenu;
             this.invokeVoid = invokeVoid;
             this.invokeBool = invokeBool;
@@ -758,14 +669,11 @@ namespace SprocketModAPI
         }
 
         public UiCapabilitySnapshot Capabilities => inner.Capabilities;
-        public UiCreateResult<IUiButtonHandle> CreateButton(string ownerId, UiButtonDefinition definition)
+        public event EventHandler<UiStatusChangedEventArgs> StatusChanged
         {
-            UiCreateResult<IUiButtonHandle> result = invokeButton(() => inner.CreateButton(ownerId, definition));
-            return result.Succeeded
-                ? UiCreateResult<IUiButtonHandle>.Success(new DispatchingButtonHandle(result.Value!, invokeVoid, invokeBool, invokeString))
-                : result;
+            add => inner.StatusChanged += value;
+            remove => inner.StatusChanged -= value;
         }
-
         public UiCreateResult<IUiMenuButtonHandle> CreateMenuButton(string ownerId, UiMenuButtonDefinition definition)
         {
             UiCreateResult<IUiMenuButtonHandle> result = invokeMenu(() => inner.CreateMenuButton(ownerId, definition));
@@ -784,9 +692,9 @@ namespace SprocketModAPI
             private readonly Func<Func<bool>, bool> invokeBool;
             private readonly Func<Func<string>, string> invokeString;
 
-            internal DispatchingButtonHandle(IUiButtonHandle inner, Action<Action> invokeVoid, Func<Func<bool>, bool> invokeBool, Func<Func<string>, string> invokeString)
+            internal DispatchingButtonHandle(IUiMenuButtonHandle inner, Action<Action> invokeVoid, Func<Func<bool>, bool> invokeBool, Func<Func<string>, string> invokeString)
             {
-                this.inner = (IUiMenuButtonHandle)inner;
+                this.inner = inner;
                 this.invokeVoid = invokeVoid;
                 this.invokeBool = invokeBool;
                 this.invokeString = invokeString;
