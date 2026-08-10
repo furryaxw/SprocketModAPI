@@ -104,7 +104,7 @@ internal static class KeybindingStoreTests
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(filePath));
         Check(document.RootElement.GetProperty("SchemaVersion").GetInt32() == 1
-            && document.RootElement.GetProperty("ApiVersion").GetString() == "1.0"
+            && document.RootElement.GetProperty("ApiVersion").GetString() == "1.1"
             && document.RootElement.GetProperty("Actions").ValueKind == JsonValueKind.Object, name);
     }
 

@@ -12,6 +12,7 @@ internal static class Program
         BindingConflictIndexTests.Run();
         BindingNormalizationTests.Run();
         InputRoutingTests.Run();
+        UiServiceTests.Run();
         Console.WriteLine("Behavior contracts passed.");
         CheckSourceLayout();
         Console.WriteLine("Source-layout contracts passed.");
@@ -20,11 +21,12 @@ internal static class Program
 
     private static void CheckPublicBehavior()
     {
-        Check(SprocketApi.ApiVersion == new Version(1, 0), "API version");
+        Check(SprocketApi.ApiVersion == new Version(1, 1), "API version");
         Check(typeof(SprocketApi).Assembly.GetName().Version == new Version(0, 1, 0, 0), "release assembly version");
         Check(SprocketApi.IsCompatible(new Version(1, 0)), "same version compatible");
         Check(!SprocketApi.IsCompatible(new Version(2, 0)), "different major rejected");
-        Check(!SprocketApi.IsCompatible(new Version(1, 1)), "newer minor rejected");
+        Check(SprocketApi.IsCompatible(new Version(1, 1)), "newer UI minor is compatible");
+        Check(!SprocketApi.IsCompatible(new Version(1, 2)), "newer minor rejected");
 
         var modifierOnly = new KeyChord("<Keyboard>/leftCtrl");
         Check(!modifierOnly.IsEmpty, "modifier-only binding");
@@ -82,17 +84,52 @@ internal static class Program
         string module = File.ReadAllText(Path.Combine(keybindingsRoot, "KeybindingsModule.cs"));
         string nativeLease = File.ReadAllText(Path.Combine(keybindingsRoot, "NativeSettingsInputLease.cs"));
         string api = File.ReadAllText(Path.Combine(coreRoot, "Api.cs"));
+        string uiModule = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UiModule.cs"));
+        string uiContracts = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "Contracts.cs"));
+        string uiBackend = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UnityUiBackend.cs"));
+        string keybindingsApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "keybindings-api.md"));
+        string uiApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "ui-api.md"));
         string readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
         string releaseNotes = File.ReadAllText(Path.Combine(repositoryRoot, "RELEASE_NOTES.md"));
 
         Check(api.Contains("IRuntimeModule[]") && api.Contains("foreach (IRuntimeModule module in modules)"), "Core hosts modules through common lifecycle");
         Check(!api.Contains("InputService") && !api.Contains("UiService") && !api.Contains("KeybindingUiController"), "Core does not own module implementations");
+        Check(uiModule.Contains("Register<IUiService>"), "UI service is registered through a module");
+        Check(uiContracts.Contains("interface IUiService") && uiContracts.Contains("interface IUiScope"), "UI public contracts exist");
+        Check(uiContracts.Contains("CreateMainMenuButtonAsync") && uiContracts.Contains("BelowNativeButtonText"), "advanced main-menu placement contract exists");
+        Check(keybindingsApi.Contains("RegisterAction") && keybindingsApi.Contains("ModifierKeys") && keybindingsApi.Contains("ActionsChanged")
+            && uiApi.Contains("CreateMainMenuButtonAsync") && uiApi.Contains("UiFailureCode") && uiApi.Contains("UiCapabilitySnapshot"),
+            "public API documentation covers the complete keybinding and UI contracts");
+        Check(uiContracts.Contains("TemplateNotFound"), "UI structured failures include template failure");
+        Check(uiBackend.Contains("Resources.FindObjectsOfTypeAll<MenuPanel>()")
+            && uiBackend.Contains("panel.buttonPrefab")
+            && uiBackend.Contains("panel.GetComponentsInChildren<Tab>(true)")
+            && uiBackend.Contains("Resources.FindObjectsOfTypeAll<Tab>()")
+            && uiBackend.Contains("candidate.hideFlags != HideFlags.HideAndDontSave")
+            && uiBackend.Contains("Resources.FindObjectsOfTypeAll<Button>()")
+            && uiBackend.Contains("buttonTemplate!.gameObject")
+            && uiBackend.Contains("Instantiate(menuButtonTemplate.gameObject")
+            && uiBackend.Contains("UiFailureCode.TemplateNotFound"),
+            "Menu Button uses a probed native Tab template and fails closed");
+        Check(uiBackend.Contains("GetComponent<RectTransform>()")
+            && !uiBackend.Contains("(RectTransform)root.transform"),
+            "UI roots use real RectTransform components without unsafe Transform casts");
+        Check(uiBackend.Contains("GetComponentInParent<Canvas>()")
+            && uiBackend.Contains("GetComponent<GraphicRaycaster>()")
+            && uiBackend.Contains("Button parent must be under an active Canvas with GraphicRaycaster"),
+            "UI creation requires an interactive Canvas parent");
+        Check(uiBackend.Contains("try { button.interactable = false; } catch (Exception) { }")
+            && uiBackend.Contains("Native pooled objects are game-owned"),
+            "scene cleanup tolerates Unity-owned controls already destroyed by unload");
+        Check(uiBackend.Contains("menuRect.anchorMin = new Vector2(0.5f, 0.5f)")
+            && uiBackend.Contains("menuRect.sizeDelta = definition.Size ?? new Vector2(180f, 36f)"),
+            "cloned Menu Button layout is reset from native stretch settings");
         Check(!ui.Contains("[SMA-UI-") && !observers.Contains("[SMA-UI-") && !api.Contains("[SMA-UI-"), "temporary UI diagnostics removed");
         Check(conflictIndex.Contains("Resources.FindObjectsOfTypeAll<InputActionAsset>()")
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
         Check(ui.Contains("uiScroll.scrollSensitivity = 0.2f"), "mouse wheel sensitivity is reduced to 0.2");
-        Check(readme.Contains("当前发行版本为 `0.1.0`，公共 API 版本为 `1.0`"), "README release and API versions are current");
+        Check(readme.Contains("当前发行版本为 `0.1.0`，公共 API 版本为 `1.1`"), "README release and API versions are current");
         Check(releaseNotes.StartsWith("# Sprocket Mod API v0.1.0", StringComparison.Ordinal), "release notes version is current");
 
         int headerPanel = ui.IndexOf("CreateHeaderPanel(uiWindow.transform)", StringComparison.Ordinal);

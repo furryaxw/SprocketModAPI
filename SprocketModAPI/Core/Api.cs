@@ -10,7 +10,7 @@ namespace SprocketModAPI
     {
         private static ServiceRegistry? registry;
 
-        public static Version ApiVersion { get; } = new(1, 0);
+    public static Version ApiVersion { get; } = new(1, 1);
 
         public static bool IsCompatible(Version requested)
             => requested.Major == ApiVersion.Major && requested.Minor <= ApiVersion.Minor;
@@ -56,7 +56,8 @@ namespace SprocketModAPI
 
             modules = new IRuntimeModule[]
             {
-                new KeybindingsModule()
+                new KeybindingsModule(),
+                new UiModule()
             };
 
             var context = new RuntimeModuleContext(services, LoggerInstance.Warning, LoggerInstance.Error);
@@ -71,7 +72,7 @@ namespace SprocketModAPI
                 throw;
             }
 
-            LoggerInstance.Msg("Sprocket Mod API 0.1.0 initialized (API 1.0).");
+            LoggerInstance.Msg("Sprocket Mod API 0.1.0 initialized (API 1.1).");
         }
 
         public override void OnUpdate()

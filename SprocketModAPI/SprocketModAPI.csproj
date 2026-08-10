@@ -23,6 +23,10 @@
     <Reference Include="Unity.TextMeshPro"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.InputSystem"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Unity.InputSystem.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Il2CppSprocket.SettingsMenu"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2CppSprocket.SettingsMenu.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppSprocket.Core.UI"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2CppSprocket.Core.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppSprocket.MainMenu"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2CppSprocket.MainMenu.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppSprocket.Core"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2CppSprocket.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Il2CppSprocket.SceneManagement"><HintPath>$(SprocketGameRoot)\MelonLoader\Il2CppAssemblies\Il2CppSprocket.SceneManagement.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
   <Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipModDeploy)' != 'true'">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SprocketGameRoot)\Mods" />
