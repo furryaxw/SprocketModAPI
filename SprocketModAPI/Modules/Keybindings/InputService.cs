@@ -20,6 +20,7 @@ namespace SprocketModAPI
         private readonly Dictionary<string, Dictionary<string, string?>> retained = new();
         private readonly List<InputBlock> blocks = new();
         private readonly KeybindingStore store;
+        private readonly KeybindingDebugLog debug;
         private readonly BindingConflictIndex conflictIndex = new();
         private readonly NativeInputBindingReader nativeBindingReader;
         private readonly HashSet<string> loadedScenes = new(StringComparer.OrdinalIgnoreCase);
@@ -29,11 +30,13 @@ namespace SprocketModAPI
         private bool settingsPageActive;
         private bool pauseMenuActive;
         private bool disposed;
+        private string? lastRouteState;
 
         internal InputService(Action<string> warn, Action<string> error)
         {
             this.warn = warn;
             this.error = error;
+            debug = new KeybindingDebugLog(KeybindingDebugSettings.Load(warn), warn);
             nativeBindingReader = new NativeInputBindingReader(warn);
             string filePath = Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "keybindings.json");
             store = new KeybindingStore(filePath, warn);
@@ -58,7 +61,7 @@ namespace SprocketModAPI
             if (actions.ContainsKey(definition.StableId))
                 throw new InvalidOperationException($"Duplicate action ID: {definition.StableId}");
 
-            var state = new ActionState(definition, error, LoadBinding(definition.StableId), BindingsChanged, RemoveAction);
+            var state = new ActionState(definition, error, debug, LoadBinding(definition.StableId), BindingsChanged, RemoveAction);
             actions.Add(definition.StableId, state);
             NotifyActionsChanged();
             return state;
@@ -81,11 +84,17 @@ namespace SprocketModAPI
 
             context = DetectContext();
             bool routeReady = route.Observe(context);
-            if (!routeReady || !Application.isFocused || externallyBlocked || blocks.Count != 0
+            bool focused = Application.isFocused;
+            bool blockedByLease = externallyBlocked || blocks.Count != 0;
+            string routeState = $"scene={SceneManager.GetActiveScene().name}, context={context}, stable={routeReady}, focused={focused}, externalBlock={externallyBlocked}, blocks={blocks.Count}";
+            if (debug.Enabled && (debug.LogEveryFrame || routeState != lastRouteState))
+                debug.Routing(routeState);
+            lastRouteState = routeState;
+            if (!routeReady || !focused || blockedByLease
                 || context == InputContextMask.Settings || context == InputContextMask.TextInput)
             {
                 foreach (ActionState action in actions.Values)
-                    action.Suppress();
+                    action.Suppress(routeState);
                 return;
             }
 
@@ -192,7 +201,7 @@ namespace SprocketModAPI
         {
             route.BeginTransition();
             foreach (ActionState action in actions.Values)
-                action.Suppress();
+                action.Suppress("scene-transition");
         }
 
         private InputContextMask DetectContext()
@@ -309,6 +318,7 @@ namespace SprocketModAPI
     {
         public readonly ModActionDefinition Definition;
         private readonly Action<string> error;
+        private readonly KeybindingDebugLog debug;
         private readonly Action changed;
         private readonly Action<ActionState> remove;
         private readonly BindingSlots bindings;
@@ -323,11 +333,12 @@ namespace SprocketModAPI
         private float pressedAt;
         private int flagsFrame = -1;
 
-        internal ActionState(ModActionDefinition definition, Action<string> error,
+        internal ActionState(ModActionDefinition definition, Action<string> error, KeybindingDebugLog debug,
             Dictionary<string, string?> overrides, Action changed, Action<ActionState> remove)
         {
             Definition = definition;
             this.error = error;
+            this.debug = debug;
             this.changed = changed;
             this.remove = remove;
             bindings = new BindingSlots(definition.DefaultPrimary, definition.DefaultSecondary,
@@ -349,18 +360,23 @@ namespace SprocketModAPI
         internal void Update(InputContextMask context)
         {
             ResetFrameFlags();
-            bool physicalPressed = ReadPhysicalState();
-            bool allowed = ActionGateEvaluator.IsAllowed(enabled, (Definition.Contexts & context) != 0,
+            bool physicalPressed = ReadPhysicalState(out bool primaryRaw, out bool secondaryRaw, out ModifierKeys modifiers);
+            bool contextMatches = (Definition.Contexts & context) != 0;
+            bool allowed = ActionGateEvaluator.IsAllowed(enabled, contextMatches,
                 Definition.Gate, exception => error($"[SMA] {Definition.StableId} gate failed: {exception}"));
+            if (primaryRaw || secondaryRaw || debug.LogEveryFrame)
+                debug.Binding($"action={Definition.StableId}, primaryRaw={primaryRaw}, secondaryRaw={secondaryRaw}, physical={physicalPressed}, enabled={enabled}, context={context}, contextMatch={contextMatches}, allowed={allowed}, modifiers={modifiers}, primary={KeyChordCodec.Format(Primary) ?? "empty"}, secondary={KeyChordCodec.Format(Secondary) ?? "empty"}", true);
             ActionDispatchResult result = dispatch.Update(physicalPressed, allowed, true);
             Apply(result, true);
         }
 
-        internal void Suppress()
+        internal void Suppress(string reason)
         {
             ResetFrameFlags();
             pressed = false;
-            bool physicalPressed = ReadPhysicalState();
+            bool physicalPressed = ReadPhysicalState(out bool primaryRaw, out bool secondaryRaw, out ModifierKeys modifiers);
+            if (primaryRaw || secondaryRaw || physicalPressed)
+                debug.Binding($"action={Definition.StableId}, suppressed=true, reason={reason}, primaryRaw={primaryRaw}, secondaryRaw={secondaryRaw}, physical={physicalPressed}, modifiers={modifiers}", true);
             ActionDispatchResult result = dispatch.Update(physicalPressed, false);
             Apply(result, false);
         }
@@ -392,8 +408,14 @@ namespace SprocketModAPI
             isPressed = result.IsPressed;
         }
 
-        private bool ReadPhysicalState()
-            => ChordPressed(bindings.Primary, primaryAction) || ChordPressed(bindings.Secondary, secondaryAction);
+        private bool ReadPhysicalState(out bool primaryRaw, out bool secondaryRaw, out ModifierKeys modifiers)
+        {
+            modifiers = CurrentModifiers();
+            primaryRaw = IsRawPressed(primaryAction);
+            secondaryRaw = IsRawPressed(secondaryAction);
+            return (primaryRaw && ModifiersMatch(bindings.Primary, modifiers))
+                || (secondaryRaw && ModifiersMatch(bindings.Secondary, modifiers));
+        }
 
         public void SetBinding(int slot, KeyChord? binding)
         {
@@ -464,10 +486,13 @@ namespace SprocketModAPI
             return KeyChordCodec.TryParse(value, out KeyChord chord) ? chord : fallback;
         }
 
-        private static bool ChordPressed(KeyChord chord, InputAction? action)
+        private static bool IsRawPressed(InputAction? action)
+            => action != null && action.IsPressed();
+
+        private static bool ModifiersMatch(KeyChord chord, ModifierKeys actual)
         {
-            if (chord.IsEmpty || action == null || !action.IsPressed()) return false;
-            ModifierKeys actual = CurrentModifiers();
+            if (chord.IsEmpty)
+                return false;
             actual &= ~PrimaryModifier(chord.RawControlPath);
             return actual == chord.Modifiers;
         }
