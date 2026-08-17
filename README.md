@@ -6,7 +6,7 @@ UI 服务提供 `StatusChanged` 状态快照事件，用于观察场景、能力
 
 面向《Sprocket》MelonLoader 模组的公共运行库。当前公共接口提供统一键位注册、输入路由、配置持久化和游戏内模组键位管理窗口。
 
-当前发行版本为 `0.2.0`，公共 API 版本为 `1.1`。发行版本与 API 兼容版本相互独立。目标环境为 Sprocket `0.2.53.2`、MelonLoader net6 和 Unity Input System。
+当前发行版本为 `0.2.0-fix1`，公共 API 版本为 `1.1`。发行版本与 API 兼容版本相互独立。目标环境为 Sprocket `0.2.53.2`、MelonLoader net6 和 Unity Input System。
 
 ## 功能
 

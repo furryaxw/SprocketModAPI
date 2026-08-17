@@ -23,7 +23,7 @@ internal static class Program
     {
         Check(SprocketApi.ApiVersion == new Version(1, 1), "API version");
         Version? releaseVersion = typeof(SprocketApi).Assembly.GetName().Version;
-        Check(releaseVersion == new Version(0, 2, 0, 0), $"release assembly version ({releaseVersion})");
+        Check(releaseVersion == new Version(0, 2, 0, 1), $"release assembly version ({releaseVersion})");
         Check(SprocketApi.IsCompatible(new Version(1, 0)), "same version compatible");
         Check(!SprocketApi.IsCompatible(new Version(2, 0)), "different major rejected");
         Check(SprocketApi.IsCompatible(new Version(1, 1)), "newer UI minor is compatible");
@@ -141,8 +141,8 @@ internal static class Program
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
         Check(ui.Contains("uiScroll.scrollSensitivity = 0.2f"), "mouse wheel sensitivity is reduced to 0.2");
-        Check(readme.Contains("当前发行版本为 `0.2.0`，公共 API 版本为 `1.1`"), "README release and API versions are current");
-        Check(releaseNotes.StartsWith("# Sprocket Mod API v0.2.0", StringComparison.Ordinal), "release notes version is current");
+        Check(readme.Contains("当前发行版本为 `0.2.0-fix1`，公共 API 版本为 `1.1`"), "README release and API versions are current");
+        Check(releaseNotes.StartsWith("# Sprocket Mod API v0.2.0-fix1", StringComparison.Ordinal), "release notes version is current");
 
         int headerPanel = ui.IndexOf("CreateHeaderPanel(uiWindow.transform)", StringComparison.Ordinal);
         int searchPanel = ui.IndexOf("CreateSearchPanel(uiWindow.transform)", StringComparison.Ordinal);
