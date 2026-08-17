@@ -114,7 +114,9 @@ namespace SprocketModAPI
         {
             if (disposed)
                 return;
-            Update();
+            // FIX: Application shutdown can destroy the native MainMenu before
+            // Melon deinitialization. A final Update then dereferenced that
+            // dead IL2CPP Behaviour; close the service before native cleanup.
             disposed = true;
             foreach (UiScopeCore scope in scopes)
                 scope.Dispose();

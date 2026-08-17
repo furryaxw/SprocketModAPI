@@ -88,6 +88,7 @@ internal static class Program
         string uiModule = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UiModule.cs"));
         string uiContracts = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "Contracts.cs"));
         string uiBackend = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UnityUiBackend.cs"));
+        string contractProject = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI.ContractTests", "SprocketModAPI.ContractTests.csproj"));
         string keybindingsApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "keybindings-api.md"));
         string uiApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "ui-api.md"));
         string readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
@@ -96,6 +97,8 @@ internal static class Program
         Check(api.Contains("IRuntimeModule[]") && api.Contains("foreach (IRuntimeModule module in modules)"), "Core hosts modules through common lifecycle");
         Check(!api.Contains("InputService") && !api.Contains("UiService") && !api.Contains("KeybindingUiController"), "Core does not own module implementations");
         Check(uiModule.Contains("Register<IUiService>"), "UI service is registered through a module");
+        Check(contractProject.Contains("AdditionalProperties=\"SkipModDeploy=true\"", StringComparison.Ordinal),
+            "offline contract project reference cannot deploy the API into the live game");
         Check(uiContracts.Contains("interface IUiService") && uiContracts.Contains("interface IUiScope"), "UI public contracts exist");
         Check(uiContracts.Contains("CreateMainMenuButtonAsync") && uiContracts.Contains("BelowNativeButtonText"), "advanced main-menu placement contract exists");
         Check(keybindingsApi.Contains("RegisterAction") && keybindingsApi.Contains("ModifierKeys") && keybindingsApi.Contains("ActionsChanged")
@@ -122,6 +125,14 @@ internal static class Program
             "ordinary Button capability and factory are removed while Menu Button handle ABI remains compatible");
         Check(uiBackend.Contains("Native pooled objects are game-owned"),
             "scene cleanup tolerates Unity-owned controls already destroyed by unload");
+        int uiServiceStart = uiBackend.IndexOf("internal sealed class UiService", StringComparison.Ordinal);
+        int uiBackendStart = uiBackend.IndexOf("internal sealed class UnityUiBackend", StringComparison.Ordinal);
+        int uiServiceDisposeStart = uiBackend.IndexOf("public void Dispose()", uiServiceStart, StringComparison.Ordinal);
+        string uiServiceDispose = uiBackend.Substring(uiServiceDisposeStart, uiBackendStart - uiServiceDisposeStart);
+        Check(!uiServiceDispose.Contains("Update();", StringComparison.Ordinal)
+            && uiServiceDispose.IndexOf("disposed = true;", StringComparison.Ordinal)
+                < uiServiceDispose.IndexOf("scope.Dispose();", StringComparison.Ordinal),
+            "UI shutdown closes service before releasing native UI and never runs a final backend update");
         Check(uiBackend.Contains("menuRect.anchorMin = new Vector2(0.5f, 0.5f)")
             && uiBackend.Contains("menuRect.sizeDelta = definition.Size ?? new Vector2(180f, 36f)"),
             "cloned Menu Button layout is reset from native stretch settings");

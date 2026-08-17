@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net6.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>disable</ImplicitUsings></PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SprocketModAPI\SprocketModAPI.csproj" />
+    <!-- FIX: Offline contract runs must never trigger the API project's
+         PostBuild copy into the live game Mods directory. -->
+    <ProjectReference Include="..\SprocketModAPI\SprocketModAPI.csproj" AdditionalProperties="SkipModDeploy=true" />
     <Reference Include="Il2Cppmscorlib"><HintPath>..\..\..\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath><Private>true</Private></Reference>
     <Reference Include="Il2CppInterop.Runtime"><HintPath>..\..\..\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath><Private>true</Private></Reference>
     <Reference Include="MelonLoader"><HintPath>..\..\..\MelonLoader\net6\MelonLoader.dll</HintPath><Private>true</Private></Reference>
