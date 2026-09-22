@@ -58,7 +58,7 @@ namespace SprocketModAPI
             }
             catch (Exception exception)
             {
-                error($"[SMA] Settings UI observer registration failed: {exception}");
+                error($"[SMA-KEY] Settings UI observer registration failed: {exception}");
             }
         }
     }

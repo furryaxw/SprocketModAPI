@@ -28,7 +28,7 @@ namespace SprocketModAPI
                 if (!nativeLeaseUnavailableLogged)
                 {
                     nativeLeaseUnavailableLogged = true;
-                    warn("[SMA] Native keymapping input could not be isolated because the page root is unavailable.");
+                    warn("[SMA-KEY] Native keymapping input could not be isolated because the page root is unavailable.");
                 }
                 return;
             }
@@ -40,7 +40,7 @@ namespace SprocketModAPI
             }
             catch (Exception exception)
             {
-                warn($"[SMA] Native keymapping input isolation failed: {exception}");
+                warn($"[SMA-KEY] Native keymapping input isolation failed: {exception}");
                 ReleaseNativeInputLease();
             }
         }
@@ -59,7 +59,7 @@ namespace SprocketModAPI
             }
             catch (Exception exception)
             {
-                warn($"[SMA] Native keymapping input restoration failed: {exception}");
+                warn($"[SMA-KEY] Native keymapping input restoration failed: {exception}");
             }
         }
     }

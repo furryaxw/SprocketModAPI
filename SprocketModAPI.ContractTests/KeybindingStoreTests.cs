@@ -56,7 +56,7 @@ internal static class KeybindingStoreTests
     {
         warnings.Clear();
         File.WriteAllText(filePath,
-            "{\"SchemaVersion\":1,\"ApiVersion\":\"1.0\",\"Actions\":{" +
+            "{\"SchemaVersion\":1,\"ApiVersion\":\"" + SprocketApi.ApiVersion.ToString(2) + "\",\"Actions\":{" +
             "\"valid:action\":{\"primary\":\"<Keyboard>/z|4\",\"secondary\":null,\"third\":\"<Keyboard>/x|0\"}," +
             "\"partial:action\":{\"primary\":42,\"secondary\":\"<Mouse>/rightButton|0\"}," +
             "\"invalid-id\":{\"primary\":\"<Keyboard>/q|0\"}}}");
@@ -87,15 +87,20 @@ internal static class KeybindingStoreTests
             "corrupt JSON is preserved in diagnostic backup");
         CheckValidRoot(filePath, "corrupt JSON is replaced with writable valid configuration");
 
-        File.WriteAllText(filePath, "{\"SchemaVersion\":2,\"ApiVersion\":\"1.0\",\"Actions\":{}}");
-        Check(store.Load().Count == 0, "unsupported schema recovers safely");
+        File.WriteAllText(filePath, "{\"ConfigVersion\":\"3.0\",\"Actions\":{}}");
+        Check(store.Load().Count == 0, "configuration from a newer version recovers safely");
         Check(Directory.GetFiles(directory, "keybindings.json.corrupt-*.bak").Length == backupCount + 2,
-            "unsupported schema is backed up");
+            "configuration from a newer version is backed up");
 
-        File.WriteAllText(filePath, "{\"SchemaVersion\":1,\"ApiVersion\":\"2.0\",\"Actions\":{}}");
-        Check(store.Load().Count == 0, "incompatible API version recovers safely");
-        Check(Directory.GetFiles(directory, "keybindings.json.corrupt-*.bak").Length == backupCount + 3,
-            "incompatible API configuration is backed up");
+        File.WriteAllText(filePath,
+            "{\"SchemaVersion\":1,\"ApiVersion\":\"1.0\",\"Actions\":{\"example:legacy\":{\"primary\":\"<Keyboard>/z|0\",\"secondary\":null}}}");
+        Check(store.Load().Count == 1, "legacy configuration migrates instead of resetting");
+        Check(Directory.GetFiles(directory, "keybindings.json.corrupt-*.bak").Length == backupCount + 2,
+            "migration leaves no backup behind");
+        string migratedText = File.ReadAllText(filePath);
+        Check(migratedText.Contains("\"ConfigVersion\""), "migrated configuration stores ConfigVersion");
+        Check(!migratedText.Contains("SchemaVersion") && !migratedText.Contains("ApiVersion"),
+            "migration drops SchemaVersion and ApiVersion");
         Check(warnings.Any(message => message.Contains("configuration", StringComparison.OrdinalIgnoreCase)),
             "whole-file recovery is logged");
     }
@@ -103,8 +108,8 @@ internal static class KeybindingStoreTests
     private static void CheckValidRoot(string filePath, string name)
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(filePath));
-        Check(document.RootElement.GetProperty("SchemaVersion").GetInt32() == 1
-            && document.RootElement.GetProperty("ApiVersion").GetString() == "1.1"
+        // 跟随运行时 API 版本，避免每次升版都要改这里。
+        Check(document.RootElement.GetProperty("ConfigVersion").GetString() == SprocketApi.ApiVersion.ToString(2)
             && document.RootElement.GetProperty("Actions").ValueKind == JsonValueKind.Object, name);
     }
 

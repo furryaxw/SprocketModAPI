@@ -1,49 +1,32 @@
 using System;
-using System.IO;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
-using MelonLoader.Utils;
 
 namespace SprocketModAPI
 {
-    internal sealed class UiDebugSettings
-    {
-        internal bool Enabled { get; private set; }
-        internal bool LogLifecycle { get; private set; } = true;
-        internal bool LogEveryFrame { get; private set; }
-
-        internal static UiDebugSettings Load(Action<string> warn, string? configurationPath = null)
-        {
-            string path = configurationPath ?? GetDefaultPath();
-            try
-            {
-                if (!File.Exists(path))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    File.WriteAllText(path, JsonSerializer.Serialize(new ConfigFile(), new JsonSerializerOptions { WriteIndented = true }));
-                    return new UiDebugSettings();
-                }
-                ConfigFile? config = JsonSerializer.Deserialize<ConfigFile>(File.ReadAllText(path));
-                if (config == null) throw new InvalidDataException("Debug configuration is empty.");
-                return new UiDebugSettings { Enabled = config.Enabled, LogLifecycle = config.LogLifecycle, LogEveryFrame = config.LogEveryFrame };
-            }
-            catch (Exception exception)
-            {
-                warn($"[SMA] UI debug configuration unavailable: {exception.Message}");
-                return new UiDebugSettings();
-            }
-        }
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static string GetDefaultPath() => Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "ui.debug.json");
-        private sealed class ConfigFile { public bool Enabled { get; set; } public bool LogLifecycle { get; set; } = true; public bool LogEveryFrame { get; set; } }
-    }
-
+    // UI 诊断日志。开关值来自 API 自身的诊断设置（`ApiSelfSettings`），**每次调用都重新读**，
+    // 所以在游戏里改开关立刻生效，不需要重启，也没有第二份状态。
+    // 配置页未就绪（`ApiSelfSettings.Current` 为 null）时退化为"全关"。
     internal sealed class UiDebugLog
     {
-        private readonly UiDebugSettings settings; private readonly Action<string> write;
-        internal UiDebugLog(UiDebugSettings settings, Action<string> write) { this.settings = settings; this.write = write; }
-        internal void Lifecycle(string message) { if (settings.Enabled && settings.LogLifecycle) write($"[SMA-UI-TRACE] {message}"); }
-        internal void EveryFrame(string message) { if (settings.Enabled && settings.LogEveryFrame) write($"[SMA-UI-TRACE] {message}"); }
+        private readonly ApiSelfSettings? settings;
+        private readonly Action<string> write;
+
+        internal UiDebugLog(ApiSelfSettings? settings, Action<string> write)
+        {
+            this.settings = settings;
+            this.write = write;
+        }
+
+        internal void Lifecycle(string message)
+        {
+            if (settings != null && settings.UiDebug && settings.UiDebugLifecycle)
+                write($"[SMA-UI-TRACE] {message}");
+        }
+
+        internal void EveryFrame(string message)
+        {
+            if (settings != null && settings.UiDebug && settings.UiDebugEveryFrame)
+                write($"[SMA-UI-TRACE] {message}");
+        }
     }
 
     internal sealed class UiStatusBroadcaster : IDisposable

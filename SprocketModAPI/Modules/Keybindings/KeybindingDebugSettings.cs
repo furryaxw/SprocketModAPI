@@ -1,80 +1,36 @@
 using System;
-using System.IO;
-using System.Text.Json;
-using MelonLoader.Utils;
 
 namespace SprocketModAPI
 {
-    internal sealed class KeybindingDebugSettings
-    {
-        internal bool Enabled { get; private set; }
-        internal bool LogRouting { get; private set; } = true;
-        internal bool LogBindings { get; private set; } = true;
-        internal bool LogEveryFrame { get; private set; }
-
-        internal static KeybindingDebugSettings Load(Action<string> warn)
-        {
-            string path = Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "keybindings.debug.json");
-            try
-            {
-                if (!File.Exists(path))
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    File.WriteAllText(path, JsonSerializer.Serialize(new ConfigFile(), new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    }));
-                    return new KeybindingDebugSettings();
-                }
-
-                ConfigFile? config = JsonSerializer.Deserialize<ConfigFile>(File.ReadAllText(path));
-                if (config == null)
-                    throw new InvalidDataException("Debug configuration is empty.");
-                return new KeybindingDebugSettings
-                {
-                    Enabled = config.Enabled,
-                    LogRouting = config.LogRouting,
-                    LogBindings = config.LogBindings,
-                    LogEveryFrame = config.LogEveryFrame
-                };
-            }
-            catch (Exception exception)
-            {
-                warn($"[SMA] keybinding debug configuration unavailable: {exception.Message}");
-                return new KeybindingDebugSettings();
-            }
-        }
-
-        private sealed class ConfigFile
-        {
-            public bool Enabled { get; set; }
-            public bool LogRouting { get; set; } = true;
-            public bool LogBindings { get; set; } = true;
-            public bool LogEveryFrame { get; set; }
-        }
-    }
-
+    // 键位诊断日志。开关值来自 API 自身的诊断设置（`ApiSelfSettings`），每次调用都重新读，
+    // 所以改开关立刻生效；配置页未就绪时退化为"全关"。
     internal sealed class KeybindingDebugLog
     {
-        private readonly KeybindingDebugSettings settings;
+        private readonly ApiSelfSettings? settings;
         private readonly Action<string> write;
-        internal KeybindingDebugLog(KeybindingDebugSettings settings, Action<string> write)
+
+        internal KeybindingDebugLog(ApiSelfSettings? settings, Action<string> write)
         {
             this.settings = settings;
             this.write = write;
         }
 
-        internal bool Enabled => settings.Enabled;
-        internal bool LogEveryFrame => settings.LogEveryFrame;
+        private bool MasterOn => settings != null && settings.KeybindingDebug;
+
+        internal bool Enabled => MasterOn;
+        internal bool LogEveryFrame => MasterOn && settings!.KeybindingDebugEveryFrame;
+
         internal void Routing(string message)
         {
-            if (settings.Enabled && settings.LogRouting)
+            if (MasterOn && settings!.KeybindingDebugRouting)
                 write($"[SMA-KEY-ROUTE] {message}");
         }
 
         internal void Binding(string message, bool force = false)
         {
-            if (settings.Enabled && settings.LogBindings && (force || settings.LogEveryFrame))
+            if (!MasterOn || !settings!.KeybindingDebugBindings)
+                return;
+            if (force || settings.KeybindingDebugEveryFrame)
                 write($"[SMA-KEY] {message}");
         }
     }

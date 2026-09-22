@@ -4,14 +4,13 @@
 
 ## 准备工作
 
-先通过模组管理器更新相关模组，确保使用最新版本。不要在旧版本 DLL 上继续排障。
+排障前先通过模组管理器把相关模组更新到当前版本。
 
 如果需要把日志发给开发者，请在模组管理器的**设置页**找到 **MelonLoader** 区域，点击“上传 Latest.log”。确认公开上传后，管理器会读取 `MelonLoader\Latest.log` 的末尾最多 8 MiB，上传原文并显示可复制的分享链接；将该链接一并提供。该操作不会自动执行，也不会自动脱敏。
 
 ## 开启调试
 
-在游戏实际安装目录的 `UserData\SprocketModAPI\` 中创建或编辑
-`keybindings.debug.json`。首次运行带调试功能的模组时也会自动创建它。
+打开游戏内 Mod 菜单（「设置 → General」左下角的 `MODS` 按钮），在 `Sprocket Mod API` 的配置页进入 `Keybinding diagnostics` 区域，打开 `Keybinding debug log`。`Keybinding debug: routing` 决定是否输出路由日志，`Keybinding debug: bindings` 决定是否输出动作日志。
 
 ```json
 {
@@ -22,9 +21,9 @@
 }
 ```
 
-保存后完全退出并重启游戏。不要只返回主菜单；配置只在模组初始化时读取。
+开关每次输出前重新读取，改动立即生效。
 
-`LogEveryFrame` 默认应保持 `false`。只有在开发者要求时才开启它，因为日志量会明显增加。
+`Keybinding debug: every frame` 默认应保持关闭。只有在开发者要求时才开启它，因为日志量会明显增加。
 
 ## 推荐复现步骤
 
@@ -110,7 +109,7 @@ If you need to send logs to the developer, open the mod manager's **Settings** p
 
 ## Enable debugging
 
-Create or edit `UserData\SprocketModAPI\keybindings.debug.json` in the actual game installation directory. A current mod build also creates the file on first startup.
+Open the in-game mod menu (the `MODS` button at the bottom left of **Settings → General**), open the `Sprocket Mod API` config page, and switch on `Keybinding debug log` under `Keybinding diagnostics`. `Keybinding debug: routing` selects the routing entries and `Keybinding debug: bindings` selects the action entries.
 
 ```json
 {
@@ -121,9 +120,9 @@ Create or edit `UserData\SprocketModAPI\keybindings.debug.json` in the actual ga
 }
 ```
 
-Fully exit and restart the game after saving the file. Returning to the main menu is not enough because the configuration is read during mod initialization.
+Every switch is re-read before each write, so a change takes effect immediately.
 
-Keep `LogEveryFrame` set to `false` unless the developer asks for it; enabling it can produce a large log.
+Keep `Keybinding debug: every frame` off unless the developer asks for it; enabling it can produce a large log.
 
 ## Recommended reproduction
 

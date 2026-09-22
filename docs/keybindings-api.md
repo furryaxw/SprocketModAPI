@@ -1,8 +1,8 @@
 # 按键注册 API
 
-通过 `SprocketApi.TryGetService` 获取 `IInputService`，并使用稳定的 `ModId` 与 `ActionId` 注册动作。
+通过 `SprocketApi.TryGetService` 获取 `IInputService`，用一个稳定的 `ActionId` 注册动作。
 
-`ModId`、`ActionId`、`DisplayName`、`Category` 和 `Description` 用于注册信息；最终稳定 ID 为 `ModId:ActionId`。发布后不要修改这两个 ID，否则用户保存的绑定无法自动关联。
+键位的稳定 ID 是 `<ModId>:<ActionId>`，ModID 由 API 从**调用方程序集**的 `Sprocket.Mod.Id` 推断；没有声明该元数据就退化为程序集名。发布后不要修改 `Sprocket.Mod.Id` 与 `ActionId`，否则用户保存的绑定无法自动关联。显式传 `ModId` 仍然有效（覆盖路径）。
 
 ```csharp
 private IInputActionHandle? toggle;
@@ -14,15 +14,15 @@ public override void OnInitializeMelon()
 
     toggle = input.RegisterAction(new ModActionDefinition
     {
-        ModId = "example-mod",
-        ActionId = "toggle-overlay",
-        DisplayName = "Toggle overlay",
-        Category = "Display",
+        // ModId = "example.example-mod", // 不建议
+        ActionId = "toggle-example",
+        DisplayName = "Toggle example",
+        Category = "Example",
         DefaultPrimary = new KeyChord("<Keyboard>/o"),
         Contexts = InputContextMask.Gameplay,
         Gate = () => panelReady
     });
-    toggle.Pressed += ToggleOverlay;
+    toggle.Pressed += ToggleExample;
 }
 
 public override void OnDeinitializeMelon() => toggle?.Dispose();
@@ -35,6 +35,8 @@ toggle.SetBinding(0, new KeyChord("<Keyboard>/p"));
 toggle.SetBinding(1, null);
 toggle.RestoreDefaults();
 ```
+
+**默认键位可以全空**：`DefaultPrimary` 与 `DefaultSecondary` 都留空时，动作注册后就是未绑定状态（`Primary.IsEmpty`、界面显示 `Unbound`），玩家自己在键位窗口里绑。
 
 `KeyChord` 使用 Unity Input System control path，例如 `<Keyboard>/k`、`<Mouse>/middleButton`。`ModifierKeys` 支持左右 Shift、Ctrl、Alt，以及 `AnyShift`、`AnyCtrl`、`AnyAlt`。修饰键可单独作为主键。
 

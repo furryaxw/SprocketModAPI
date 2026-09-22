@@ -7,7 +7,8 @@ namespace SprocketModAPI
 {
     public sealed class UiOwnerDefinition
     {
-        public string ModId { get; init; } = "";
+        // UI 作用域命名空间。**可以留空**：留空时由 `IUiService.CreateScope` 从调用方程序集的 `Sprocket.Mod.Id` 推断。
+        public string ModId { get; set; } = "";
         public string DisplayName { get; init; } = "";
     }
 
@@ -80,7 +81,6 @@ namespace SprocketModAPI
         public Action? OnClick { get; init; }
     }
 
-    // Retained for binary compatibility with existing Menu Button consumers; no ordinary Button factory remains.
     public interface IUiButtonHandle : IDisposable
     {
         bool IsDisposed { get; }

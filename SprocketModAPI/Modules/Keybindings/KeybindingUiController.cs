@@ -18,6 +18,8 @@ namespace SprocketModAPI
         private readonly InputService input;
         private readonly Action<string> warn;
         private readonly Action<string> error;
+        // 观察器里有好几条"这一帧场景还没就绪"的警告：同一条只报一次，别每次进设置页都刷。
+        private readonly ApiLog log;
         private const float CanvasWidth = 1122.519685f;
         private const float CanvasHeight = 793.700787f;
         private const float WindowWidth = 971.338583f;
@@ -50,8 +52,10 @@ namespace SprocketModAPI
         private const float FooterSpacing = 16f;
         private const float ResetAllWidth = 107.431641f;
         private const float CloseWidth = 101.067383f;
-        private const float EntryWidth = 190f;
-        private const float EntryHeight = 42f;
+        // 入口尺寸与底边距：运行时会对齐到设置页原生按钮的实际矩形（两个画布缩放比例不同），
+        // 这里只是建对象时的初值，也是取不到原生按钮时的回落值——Sprocket 原生按钮实测 148×36。
+        private const float EntryWidth = 148f;
+        private const float EntryHeight = 36f;
         private const float EntryBottom = 84f;
 
         private static readonly Color BackdropColor = Rgba(17, 17, 17, 0.82f);
@@ -82,6 +86,7 @@ namespace SprocketModAPI
         private GameObject? uiRoot;
         private GameObject? uiEntryObject;
         private RectTransform? uiEntryRect;
+        private Il2CppTMPro.TextMeshProUGUI? uiEntryLabel;
         private GameObject? uiBackdrop;
         private GameObject? uiWindow;
         private TMP_InputField? uiSearchInput;
@@ -105,6 +110,7 @@ namespace SprocketModAPI
             this.input = input ?? throw new ArgumentNullException(nameof(input));
             this.warn = warn ?? throw new ArgumentNullException(nameof(warn));
             this.error = error ?? throw new ArgumentNullException(nameof(error));
+            this.log = ApiLog.FromWarn(this.warn);
             input.InternalActionsChanged += MarkDirty;
         }
 
@@ -129,6 +135,10 @@ namespace SprocketModAPI
                 }
 
                 EnsureUi();
+                // 原生按钮可能比入口晚实例化、也可能整排被换掉：每帧重新确认引用并重算位置。
+                EnsureActionButtons();
+                if (observedActionButtons != null)
+                    ApplyObservedActionButtonsAlignment();
                 if (uiDirty)
                     RefreshUiText();
 
@@ -145,7 +155,7 @@ namespace SprocketModAPI
                 ReleaseNativeInputLease();
                 if (uiRoot != null)
                     uiRoot.SetActive(false);
-                error($"[SMA] keybinding UI disabled after compatibility error: {exception}");
+                error($"[SMA-KEY] keybinding UI disabled after compatibility error: {exception}");
             }
         }
 
@@ -160,6 +170,7 @@ namespace SprocketModAPI
             uiRoot = null;
             uiEntryObject = null;
             uiEntryRect = null;
+            uiEntryLabel = null;
             uiBackdrop = null;
             uiWindow = null;
             uiSearchInput = null;
@@ -196,7 +207,9 @@ namespace SprocketModAPI
                 root.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
             }
 
-            CreateButton(root.transform, "Mod Keybindings Entry", "MOD KEYBINDINGS", EntryWidth, EntryHeight, 12f, true, Color.white, true, OpenWindow, out uiEntryObject, out _);
+            // 中性灰起步（与原生按钮同族），真正的外观在 `ApplyNativeEntryAppearance` 里照抄原生按钮；
+            // 这里不传 primary，避免入口被画成琥珀色的"主操作"。
+            CreateButton(root.transform, "Mod Keybindings Entry", "MOD KEYBINDINGS", EntryWidth, EntryHeight, 12f, false, Color.white, false, OpenWindow, out uiEntryObject, out uiEntryLabel);
             uiEntryRect = uiEntryObject.GetComponent<RectTransform>();
             uiEntryRect.anchorMin = Vector2.zero;
             uiEntryRect.anchorMax = Vector2.zero;

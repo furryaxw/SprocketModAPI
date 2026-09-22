@@ -165,7 +165,7 @@ namespace SprocketModAPI
             }
             catch (Exception exception)
             {
-                warn($"[SMA] failed to enumerate native input assets: {exception.Message}");
+                warn($"[SMA-KEY] failed to enumerate native input assets: {exception.Message}");
                 return result;
             }
 
@@ -174,7 +174,7 @@ namespace SprocketModAPI
                 if (!warnedNoAssets)
                 {
                     warnedNoAssets = true;
-                    warn("[SMA] no loaded InputActionAsset was found; native keybinding conflicts are unavailable.");
+                    warn("[SMA-KEY] no loaded InputActionAsset was found; native keybinding conflicts are unavailable.");
                 }
                 return result;
             }
@@ -192,7 +192,7 @@ namespace SprocketModAPI
                 }
                 catch (Exception exception)
                 {
-                    warn($"[SMA] failed to read native input asset {asset.name}: {exception.Message}");
+                    warn($"[SMA-KEY] failed to read native input asset {asset.name}: {exception.Message}");
                 }
             }
             return result;

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using MelonLoader.Utils;
 using Il2CppTMPro;
 using UnityEngine;
@@ -36,7 +38,7 @@ namespace SprocketModAPI
         {
             this.warn = warn;
             this.error = error;
-            debug = new KeybindingDebugLog(KeybindingDebugSettings.Load(warn), warn);
+            debug = new KeybindingDebugLog(ApiSelfSettings.Current, warn);
             nativeBindingReader = new NativeInputBindingReader(warn);
             string filePath = Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "keybindings.json");
             store = new KeybindingStore(filePath, warn);
@@ -54,9 +56,12 @@ namespace SprocketModAPI
         internal event Action? InternalActionsChanged;
         internal IReadOnlyCollection<ActionState> Actions => actions.Values;
 
+        [MethodImpl(MethodImplOptions.NoInlining)] // GetCallingAssembly 需要真实栈帧：不能被内联进模组方法
         public IInputActionHandle RegisterAction(ModActionDefinition definition)
         {
             ThrowIfDisposed();
+            if (string.IsNullOrWhiteSpace(definition.ModId))
+                definition.ModId = ModIdentity.ResolveModId(Assembly.GetCallingAssembly());
             Validate(definition);
             if (actions.ContainsKey(definition.StableId))
                 throw new InvalidOperationException($"Duplicate action ID: {definition.StableId}");
@@ -68,11 +73,16 @@ namespace SprocketModAPI
         }
 
         public IDisposable AcquireInputBlock(object owner, string reason)
+            => AcquireInputBlock(owner, reason, null);
+
+        // `exemptActionId`：这块 UI 自己那个开关键必须继续响应，否则只能开、不能关。
+        // 只豁免一个明确的动作 ID，其它模组的动作照旧被挡住。
+        internal IDisposable AcquireInputBlock(object owner, string reason, string? exemptActionId)
         {
             ThrowIfDisposed();
             if (owner == null) throw new ArgumentNullException(nameof(owner));
             if (string.IsNullOrWhiteSpace(reason)) throw new ArgumentException("An input block reason is required.", nameof(reason));
-            var block = new InputBlock(this);
+            var block = new InputBlock(this, exemptActionId);
             blocks.Add(block);
             return block;
         }
@@ -85,12 +95,13 @@ namespace SprocketModAPI
             context = DetectContext();
             bool routeReady = route.Observe(context);
             bool focused = Application.isFocused;
-            bool blockedByLease = externallyBlocked || blocks.Count != 0;
-            string routeState = $"scene={SceneManager.GetActiveScene().name}, context={context}, stable={routeReady}, focused={focused}, externalBlock={externallyBlocked}, blocks={blocks.Count}";
+            int blockCount = blocks.Count;
+            bool blockedByLease = externallyBlocked || blockCount != 0;
+            string routeState = $"scene={SceneManager.GetActiveScene().name}, context={context}, stable={routeReady}, focused={focused}, externalBlock={externallyBlocked}, blocks={blockCount}";
             if (debug.Enabled && (debug.LogEveryFrame || routeState != lastRouteState))
                 debug.Routing(routeState);
             lastRouteState = routeState;
-            if (!routeReady || !focused || blockedByLease
+            if (!routeReady || !focused
                 || context == InputContextMask.Settings || context == InputContextMask.TextInput)
             {
                 foreach (ActionState action in actions.Values)
@@ -98,8 +109,35 @@ namespace SprocketModAPI
                 return;
             }
 
+            if (blockedByLease)
+            {
+                // 拿到输入锁的一方可以豁免一个动作（见 AcquireInputBlock 的重载）：被豁免的动作
+                // 继续走正常的按下判定，其余动作一律压住；`externallyBlocked`（别的模组的模态）
+                // 不参与豁免。
+                foreach (ActionState action in actions.Values)
+                {
+                    if (!externallyBlocked && IsBlockExempt(action))
+                        action.Update(context);
+                    else
+                        action.Suppress(routeState);
+                }
+
+                return;
+            }
+
             foreach (ActionState action in actions.Values)
                 action.Update(context);
+        }
+
+        private bool IsBlockExempt(ActionState action)
+        {
+            foreach (InputBlock block in blocks)
+            {
+                if (block.ExemptActionId != null && string.Equals(block.ExemptActionId, action.Definition.StableId, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
         }
 
         internal void NotifySceneLoaded(string sceneName)
@@ -240,8 +278,8 @@ namespace SprocketModAPI
             if (string.IsNullOrWhiteSpace(definition.ModId) || string.IsNullOrWhiteSpace(definition.ActionId)
                 || definition.ModId.Contains(':') || definition.ActionId.Contains(':'))
                 throw new ArgumentException("modId and actionId must be non-empty and cannot contain ':'.");
-            if (definition.DefaultPrimary.IsEmpty && definition.DefaultSecondary.IsEmpty)
-                throw new ArgumentException("At least one default binding is required.");
+            // 默认键位**允许全空**：动作注册后初始为未绑定（`KeyChord.IsEmpty`），玩家在键位窗口里自己绑。
+            // 走这条路的多为「不该占用默认键」的动作，例如 Mod 菜单（入口在设置页，不需要抢键）。
         }
 
         private Dictionary<string, string?> LoadBinding(string id)
@@ -264,7 +302,15 @@ namespace SprocketModAPI
         private sealed class InputBlock : IDisposable
         {
             private InputService? service;
-            internal InputBlock(InputService service) => this.service = service;
+            internal InputBlock(InputService service, string? exemptActionId)
+            {
+                this.service = service;
+                ExemptActionId = exemptActionId;
+            }
+
+            // 该输入锁唯一允许继续触发的动作 ID；null 表示锁住全部动作。
+            internal string? ExemptActionId { get; }
+
             public void Dispose()
             {
                 InputService? owner = service;
@@ -363,7 +409,7 @@ namespace SprocketModAPI
             bool physicalPressed = ReadPhysicalState(out bool primaryRaw, out bool secondaryRaw, out ModifierKeys modifiers);
             bool contextMatches = (Definition.Contexts & context) != 0;
             bool allowed = ActionGateEvaluator.IsAllowed(enabled, contextMatches,
-                Definition.Gate, exception => error($"[SMA] {Definition.StableId} gate failed: {exception}"));
+                Definition.Gate, exception => error($"[SMA-KEY] {Definition.StableId} gate failed: {exception}"));
             if (primaryRaw || secondaryRaw || debug.LogEveryFrame)
                 debug.Binding($"action={Definition.StableId}, primaryRaw={primaryRaw}, secondaryRaw={secondaryRaw}, physical={physicalPressed}, enabled={enabled}, context={context}, contextMatch={contextMatches}, allowed={allowed}, modifiers={modifiers}, primary={KeyChordCodec.Format(Primary) ?? "empty"}, secondary={KeyChordCodec.Format(Secondary) ?? "empty"}", true);
             ActionDispatchResult result = dispatch.Update(physicalPressed, allowed, true);
@@ -476,7 +522,7 @@ namespace SprocketModAPI
         private void SafeInvoke(Action? callback)
         {
             try { callback?.Invoke(); }
-            catch (Exception exception) { error($"[SMA] {Definition.StableId} callback failed: {exception}"); }
+            catch (Exception exception) { error($"[SMA-KEY] {Definition.StableId} callback failed: {exception}"); }
         }
 
         private static KeyChord Resolve(Dictionary<string, string?> overrides, string key, KeyChord fallback)

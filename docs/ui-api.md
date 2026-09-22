@@ -6,7 +6,7 @@
 if (!SprocketApi.TryGetService<IUiService>(out var ui))
     return;
 
-var scope = ui.CreateScope(new UiOwnerDefinition { ModId = "example-mod" });
+var scope = ui.CreateScope(new UiOwnerDefinition { ModId = "example.example-mod" });
 ```
 
 `UiCapabilitySnapshot.Available` 表示当前可用能力，使用 `Supports(UiCapability.MenuButton)` 检查。创建失败通过 `UiCreateResult<T>` 返回：检查 `Succeeded`，成功时读取 `Value`，失败时读取 `Failure` 和 `Message`。
@@ -15,7 +15,7 @@ var scope = ui.CreateScope(new UiOwnerDefinition { ModId = "example-mod" });
 
 `IUiService.StatusChanged` 在 Unity 主线程发布不可变的 `UiStatusChangedEventArgs`。`Previous` 和 `Current` 是完整的 `UiCapabilitySnapshot`，包括 `GameVersion`、`Available`、`SceneName`、`IsMainMenuReady` 与 `MenuGeneration`；事件参数不会暴露 Unity 对象或内部句柄。仅实际状态变化会触发事件。订阅者异常会被隔离并记录，不会中断 UI 生命周期；服务释放后不再发布事件。
 
-API 首次运行会创建 `UserData/SprocketModAPI/ui.debug.json`：
+在游戏内 Mod 菜单（「设置 → General」左下角的 `MODS` 按钮）的 `Sprocket Mod API` 配置页，`UI diagnostics` 区域提供开关；`UI diagnostics` 的 `UI debug: every frame` 与 `UI debug: lifecycle` 决定逐帧日志与生命周期日志：
 
 ```json
 { "Enabled": false, "LogLifecycle": true, "LogEveryFrame": false }
@@ -47,9 +47,9 @@ var result = await scope.CreateMenuButtonAsync(new UiMenuButtonDefinition
 var result = await scope.CreateMainMenuButtonAsync(new UiMenuButtonDefinition
 {
     Parent = menuButtonsTransform,
-    Text = "Laser Rangefinder",
+    Text = "Example Mod",
     BelowNativeButtonText = "Custom Battle",
-    OnClick = OpenRangefinder
+    OnClick = OpenExamplePanel
 });
 ```
 

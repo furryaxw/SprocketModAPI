@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Il2CppSprocket.UI;
@@ -46,10 +48,15 @@ namespace SprocketModAPI
             if (!disposed) statusBroadcaster.Publish(this, args);
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)] // GetCallingAssembly 需要真实栈帧：不能被内联进模组方法
         public IUiScope CreateScope(UiOwnerDefinition owner)
         {
-            if (owner == null || string.IsNullOrWhiteSpace(owner.ModId))
-                throw new ArgumentException("UI owner ModId is required.", nameof(owner));
+            if (owner == null)
+                throw new ArgumentException("UI owner definition is required.", nameof(owner));
+            if (string.IsNullOrWhiteSpace(owner.ModId))
+                owner.ModId = ModIdentity.ResolveModId(Assembly.GetCallingAssembly());
+            if (string.IsNullOrWhiteSpace(owner.ModId))
+                throw new ArgumentException("UI owner ModId could not be resolved.", nameof(owner));
             if (disposed)
                 throw new ObjectDisposedException(nameof(UiService));
             var scope = new UiScopeCore(owner.ModId, dispatchedBackend);
@@ -149,7 +156,7 @@ namespace SprocketModAPI
         internal UnityUiBackend(Action<string> warn, Action<string> error)
         {
             this.error = error;
-            debug = new UiDebugLog(UiDebugSettings.Load(warn), error);
+            debug = new UiDebugLog(ApiSelfSettings.Current, error);
             Capabilities = new UiCapabilitySnapshot { GameVersion = SupportedGameVersion };
             RefreshCapabilities();
         }
@@ -218,7 +225,9 @@ namespace SprocketModAPI
                     if (nativeHandle.EnsureRegistered(menuPanel, menuGeneration, CreateRegisteredTab))
                         debug.Lifecycle($"register generation={menuGeneration} text={nativeHandle.Text}");
                     if (nativeHandle.ConsumeActivityChange(out bool activeSelf, out bool activeInHierarchy, out string path))
-                        error($"[SMA-UI] native-registration text={nativeHandle.Text} activeSelf={activeSelf} activeInHierarchy={activeInHierarchy} path={path}");
+                        // 这是**成功**注册后的活动状态诊断，不是失败：默认关闭的 UI trace，避免把正常
+                        // 生命周期当错误刷进 Latest.log（真正的失败仍然走 error/warn）。
+                        debug.Lifecycle($"native-registration text={nativeHandle.Text} activeSelf={activeSelf} activeInHierarchy={activeInHierarchy} path={path}");
                 }
             }
             PublishStatusIfChanged(true);
