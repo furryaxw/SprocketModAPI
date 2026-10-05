@@ -37,7 +37,7 @@ internal static class Program
     {
         Check(SprocketApi.ApiVersion == new Version(2, 0), "API version");
         Version? releaseVersion = typeof(SprocketApi).Assembly.GetName().Version;
-        Check(releaseVersion == new Version(0, 3, 0, 0), $"release assembly version ({releaseVersion})");
+        Check(releaseVersion == new Version(1, 0, 0, 0), $"release assembly version ({releaseVersion})");
         Check(!SprocketApi.IsCompatible(new Version(1, 0)), "1.x is not accepted");
         Check(SprocketApi.IsCompatible(new Version(2, 0)), "current version compatible");
         Check(!SprocketApi.IsCompatible(new Version(1, 2)), "1.2 is not accepted");
