@@ -187,8 +187,6 @@ namespace SprocketModAPI
                 return;
             disposed = true;
             Save();
-            foreach (ActionState action in actions.Values.ToArray())
-                action.Detach();
             actions.Clear();
             blocks.Clear();
             ActionsChanged = null;
@@ -373,8 +371,6 @@ namespace SprocketModAPI
         private bool released;
         private bool enabled = true;
         private bool disposed;
-        private InputAction? primaryAction;
-        private InputAction? secondaryAction;
         private float pressedAt;
         private int flagsFrame = -1;
 
@@ -389,7 +385,6 @@ namespace SprocketModAPI
             bindings = new BindingSlots(definition.DefaultPrimary, definition.DefaultSecondary,
                 Resolve(overrides, "primary", definition.DefaultPrimary),
                 Resolve(overrides, "secondary", definition.DefaultSecondary));
-            Rebuild();
         }
 
         public event Action? Pressed;
@@ -456,8 +451,8 @@ namespace SprocketModAPI
         private bool ReadPhysicalState(out bool primaryRaw, out bool secondaryRaw, out ModifierKeys modifiers)
         {
             modifiers = CurrentModifiers();
-            primaryRaw = IsRawPressed(primaryAction);
-            secondaryRaw = IsRawPressed(secondaryAction);
+            primaryRaw = IsRawPressed(bindings.Primary);
+            secondaryRaw = IsRawPressed(bindings.Secondary);
             return (primaryRaw && ModifiersMatch(bindings.Primary, modifiers))
                 || (secondaryRaw && ModifiersMatch(bindings.Secondary, modifiers));
         }
@@ -465,14 +460,12 @@ namespace SprocketModAPI
         public void SetBinding(int slot, KeyChord? binding)
         {
             bindings.SetBinding(slot, binding);
-            Rebuild();
             changed();
         }
 
         public void RestoreDefaults()
         {
             bindings.RestoreDefaults();
-            Rebuild();
             changed();
         }
 
@@ -481,17 +474,7 @@ namespace SprocketModAPI
         {
             if (disposed) return;
             disposed = true;
-            Detach();
             remove(this);
-        }
-
-        internal void Detach()
-        {
-            primaryAction?.Disable();
-            primaryAction?.Dispose();
-            secondaryAction?.Disable();
-            secondaryAction?.Dispose();
-            primaryAction = secondaryAction = null;
         }
 
         internal Dictionary<string, string?> Serialize()
@@ -499,22 +482,6 @@ namespace SprocketModAPI
             var value = new Dictionary<string, string?>();
             if (bindings.Primary != Definition.DefaultPrimary) value["primary"] = KeyChordCodec.Format(bindings.Primary);
             if (bindings.Secondary != Definition.DefaultSecondary) value["secondary"] = KeyChordCodec.Format(bindings.Secondary);
-            return value;
-        }
-
-        private void Rebuild()
-        {
-            Detach();
-            primaryAction = Build(bindings.Primary, "primary");
-            secondaryAction = Build(bindings.Secondary, "secondary");
-        }
-
-        private InputAction? Build(KeyChord chord, string slot)
-        {
-            if (chord.IsEmpty) return null;
-            var value = new InputAction($"{Definition.StableId}:{slot}");
-            value.AddBinding(chord.RawControlPath);
-            value.Enable();
             return value;
         }
 
@@ -531,8 +498,30 @@ namespace SprocketModAPI
             return KeyChordCodec.TryParse(value, out KeyChord chord) ? chord : fallback;
         }
 
-        private static bool IsRawPressed(InputAction? action)
-            => action != null && action.IsPressed();
+        // 按键直接读设备状态：独立创建的 `InputAction` 在游戏自己的 InputSystem 配置下收不到输入。
+        private static bool IsRawPressed(KeyChord chord)
+        {
+            if (chord.IsEmpty)
+                return false;
+
+            Keyboard? keyboard = Keyboard.current;
+            if (keyboard == null)
+                return false;
+
+            return TryResolveKey(chord.RawControlPath, out Key key) && keyboard[key].isPressed;
+        }
+
+        // 控件路径 `<Keyboard>/leftCtrl` 的末段就是 `Key` 枚举名。
+        private static bool TryResolveKey(string path, out Key key)
+        {
+            key = Key.None;
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            int separator = path.LastIndexOf('/');
+            string name = separator >= 0 ? path.Substring(separator + 1) : path;
+            return name.Length != 0 && Enum.TryParse(name, true, out key);
+        }
 
         private static bool ModifiersMatch(KeyChord chord, ModifierKeys actual)
         {
@@ -556,7 +545,8 @@ namespace SprocketModAPI
             return modifiers;
         }
 
-        private static ModifierKeys PrimaryModifier(string path) => path switch
+        // 绑定路径的大小写由玩家配置决定，比较一律忽略大小写。
+        private static ModifierKeys PrimaryModifier(string path) => path.ToLowerInvariant() switch
         {
             "<keyboard>/leftshift" => ModifierKeys.LeftShift,
             "<keyboard>/rightshift" => ModifierKeys.RightShift,
