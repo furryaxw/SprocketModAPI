@@ -69,7 +69,7 @@ namespace SprocketModAPI
 
             string modsDirectory = ModPaths.PluginsRoot;
             string pluginsDirectory = ModPaths.PluginsRoot;
-            string userLibsDirectory = ModPaths.SharedLibraryRoot;
+            string userLibsDirectory = ModPaths.PluginsRoot;
             ModMenuService? pending = null;
             window = new ModMenuWindow(metadata, config, input, modsDirectory, pluginsDirectory, userLibsDirectory,
                 context.Warn, context.Error, visible =>

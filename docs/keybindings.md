@@ -33,7 +33,7 @@ API 为所有已注册动作的两个绑定槽建立精确 `KeyChord` 索引，�
 配置保存在：
 
 ```text
-UserData\SprocketModAPI\keybindings.json
+BepInEx\config\SprocketModAPI\keybindings.json
 ```
 
 文件包含 schema 版本、API 版本和以稳定动作 ID 为键的绑定覆盖。API 只保存与当前默认值不同的槽位；未覆盖的槽位会继续跟随模组后续版本提供的新默认值。

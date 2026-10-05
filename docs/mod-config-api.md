@@ -81,7 +81,7 @@ registration?.SetNumber("strength", 3.0);
 
 ## 持久化
 
-- 每个模组一个文件：`UserData/SprocketModAPI/modconfig/<modId>.json`，其中 `<modId>` = `Sprocket.Mod.Id`
+- 每个模组一个文件：`BepInEx/config/SprocketModAPI/modconfig/<modId>.json`，其中 `<modId>` = `Sprocket.Mod.Id`
   （未声明时退化为程序集名）。
 - 架构：`{"ConfigVersion":"<版本>","ModId":"…","Values":{…}}`。
 - `ConfigVersion` 比当前新（文件来自更新构建）、JSON 损坏或版本不可读时：先备份为

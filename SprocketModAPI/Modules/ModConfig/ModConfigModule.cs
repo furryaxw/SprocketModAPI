@@ -4,7 +4,7 @@ using System.IO;
 namespace SprocketModAPI
 {
     // 声明式配置模块：向注册表提供 `IModConfigService`。
-    // 持久化位置为 `UserData/SprocketModAPI/modconfig/<modId>.json`，每个模组一个文件。
+    // 持久化位置为 `BepInEx/config/SprocketModAPI/modconfig/<modId>.json`，每个模组一个文件。
     // 它还负责 API **自身**的诊断设置（`ApiSelfSettings`），所以必须最先初始化。
     internal sealed class ModConfigModule : IRuntimeModule
     {

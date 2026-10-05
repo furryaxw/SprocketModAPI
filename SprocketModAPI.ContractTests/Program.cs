@@ -179,7 +179,7 @@ internal static class Program
         Check(conflictIndex.Contains("Resources.FindObjectsOfTypeAll<InputActionAsset>()")
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
-        Check(ui.Contains("uiScroll.scrollSensitivity = 0.2f"), "mouse wheel sensitivity is reduced to 0.2");
+        Check(ui.Contains("uiScroll.scrollSensitivity = 2f"), "keybinding list scroll sensitivity is set");
         Check(readme.Contains("当前发行版本为 `0.3.0`，公共 API 版本为 `2.0`"), "README release and API versions are current");
         Check(releaseNotes.StartsWith("# Sprocket Mod API v0.3.0", StringComparison.Ordinal), "release notes version is current");
 
@@ -264,7 +264,7 @@ internal static class Program
         Check(api.Contains("new ModConfigModule()"), "config module is hosted through the common module list");
         Check(modConfigModule.Contains("Register<IModConfigService>")
             && modConfigModule.Contains("Path.Combine(ModPaths.ModDataRoot, \"modconfig\")"),
-            "config service is registered through a module and persists under UserData/SprocketModAPI/modconfig");
+            "config service is registered through a module and persists under the mod data root");
         Check(modConfigModule.Contains("new ApiSelfSettings(") && apiSelfSettings.Contains("ModIdentity.ResolveModId")
             && apiSelfSettings.Contains("IModConfigRegistration"),
             "the API registers its own settings page under its declared id");
