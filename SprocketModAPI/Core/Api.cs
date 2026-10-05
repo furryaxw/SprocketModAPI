@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using MelonLoader;
 
-[assembly: MelonInfo(typeof(SprocketModAPI.ApiMod), "Sprocket Mod API", "0.3.0", "furryAxw")]
+[assembly: MelonInfo(typeof(SprocketModAPI.ApiMod), "Sprocket Mod API", "0.3.0-fix1", "furryAxw")]
 [assembly: MelonGame("HD", "Sprocket")]
 [assembly: AssemblyMetadata("Sprocket.Mod.Id", "furryaxw.sprocket-mod-api")]
 [assembly: AssemblyMetadata("Sprocket.Mod.DisplayName", "Sprocket Mod API")]
