@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using Il2CppInterop.Runtime.Injection;
-using MelonLoader.Utils;
 
 namespace SprocketModAPI
 {
@@ -67,10 +66,9 @@ namespace SprocketModAPI
                 return;
             }
 
-            string modsDirectory = Path.GetDirectoryName(typeof(ModMenuModule).Assembly.Location) ?? "";
-            string gameRoot = string.IsNullOrEmpty(modsDirectory) ? "" : Directory.GetParent(modsDirectory)?.FullName ?? "";
-            string pluginsDirectory = string.IsNullOrEmpty(gameRoot) ? "" : Path.Combine(gameRoot, "Plugins");
-            string userLibsDirectory = string.IsNullOrEmpty(gameRoot) ? "" : Path.Combine(gameRoot, "UserLibs");
+            string modsDirectory = ModPaths.PluginsRoot;
+            string pluginsDirectory = ModPaths.PluginsRoot;
+            string userLibsDirectory = ModPaths.SharedLibraryRoot;
             ModMenuService? pending = null;
             window = new ModMenuWindow(metadata, config, input, modsDirectory, pluginsDirectory, userLibsDirectory,
                 context.Warn, context.Error, visible =>

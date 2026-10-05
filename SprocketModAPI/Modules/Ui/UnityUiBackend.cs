@@ -4,10 +4,10 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Il2CppSprocket.UI;
-using Il2CppSprocket.Selection;
-using Il2CppSprocket;
-using Il2CppSprocket.SceneManagement;
+using Sprocket.UI;
+using Sprocket.Selection;
+using Sprocket;
+using Sprocket.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -428,7 +428,7 @@ namespace SprocketModAPI
 
         private static Tab? CreateRegisteredTab(MenuPanel panel, string text, UnityAction? action, bool interactable)
         {
-            Il2CppSprocket.ObjectPool<Tab>? pool = panel.buttonPool;
+            Sprocket.ObjectPool<Tab>? pool = panel.buttonPool;
             if (pool == null)
                 return null;
             int before = pool.ActiveCount;
@@ -447,7 +447,7 @@ namespace SprocketModAPI
         {
             if (string.IsNullOrWhiteSpace(anchorText))
                 return true;
-            Il2CppSprocket.ObjectPool<Tab>? pool = panel.buttonPool;
+            Sprocket.ObjectPool<Tab>? pool = panel.buttonPool;
             if (pool == null)
                 return false;
             List<Tab> tabs = new();

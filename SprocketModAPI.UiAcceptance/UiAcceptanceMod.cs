@@ -1,14 +1,13 @@
 using System;
 using System.Reflection;
-using MelonLoader;
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
 using SprocketModAPI;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 
-[assembly: MelonInfo(typeof(SprocketModAPI.UiAcceptance.UiAcceptanceMod), "Sprocket Mod API UI Acceptance", "0.2.0", "furryAxw")]
-[assembly: MelonGame("HD", "Sprocket")]
-[assembly: MelonAdditionalDependencies("SprocketModAPI")]
 // 开发/验收专用模组：声明一个稳定 Id（不进 Registry），键位与配置命名空间都由它继承。
 [assembly: AssemblyMetadata("Sprocket.Mod.Id", "furryaxw.sprocketmodapi-ui-acceptance")]
 [assembly: AssemblyMetadata("Sprocket.Mod.DisplayName", "Sprocket Mod API UI Acceptance")]
@@ -20,8 +19,12 @@ using UnityEngine.EventSystems;
 
 namespace SprocketModAPI.UiAcceptance
 {
-    public sealed class UiAcceptanceMod : MelonMod
+    [BepInPlugin(PluginGuid, "Sprocket Mod API UI Acceptance", "0.2.0")]
+    [BepInDependency("furryaxw.sprocket-mod-api")]
+    public sealed class UiAcceptanceMod : BasePlugin
     {
+        internal const string PluginGuid = "furryaxw.sprocketmodapi-ui-acceptance";
+
         private IUiScope? scope;
         private IUiMenuButtonHandle? menuButton;
         private IUiService? ui;
@@ -34,21 +37,22 @@ namespace SprocketModAPI.UiAcceptance
         private int menuCloseAtFrame = -1;
         private string currentScene = "";
 
-        public override void OnInitializeMelon()
+        public override void Load()
         {
             RegisterConfigPage();
+            AddComponent<UiAcceptanceDriver>().Configure(this);
 
             if (!SprocketApi.TryGetService<IUiService>(out IUiService? resolvedUi))
             {
-                LoggerInstance.Error("[SMA-UI-ACCEPT] IUiService unavailable.");
+                Log.LogError("[SMA-UI-ACCEPT] IUiService unavailable.");
                 return;
             }
 
             SprocketApi.TryGetService(out modMenu);
             ui = resolvedUi!;
             ui.StatusChanged += OnUiStatusChanged;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] capabilities={ui.Capabilities.Available}");
-            LoggerInstance.Msg("[SMA-UI-ACCEPT] automatic test: creates one native Menu Button in MainMenu, then waits for a click; scene unload cleanup is observed in API logs.");
+            Log.LogInfo($"[SMA-UI-ACCEPT] capabilities={ui.Capabilities.Available}");
+            Log.LogInfo("[SMA-UI-ACCEPT] automatic test: creates one native Menu Button in MainMenu, then waits for a click; scene unload cleanup is observed in API logs.");
             // CreateScope 从调用方程序集推断 ModId（本模组声明了 Sprocket.Mod.Id）。
             scope = ui.CreateScope(new UiOwnerDefinition { DisplayName = "UI Acceptance" });
         }
@@ -72,31 +76,31 @@ namespace SprocketModAPI.UiAcceptance
                 }
                 catch (Exception exception)
                 {
-                    LoggerInstance.Warning($"[SMA-UI-ACCEPT] config snapshot unavailable: {exception.Message}");
+                    Log.LogWarning($"[SMA-UI-ACCEPT] config snapshot unavailable: {exception.Message}");
                 }
 
-                LoggerInstance.Msg($"[SMA-UI-ACCEPT] metadata mods={metadata.Entries.Count} config-pages={configPages}");
+                Log.LogInfo($"[SMA-UI-ACCEPT] metadata mods={metadata.Entries.Count} config-pages={configPages}");
             }
 
             if (modMenu == null)
             {
-                LoggerInstance.Warning("[SMA-UI-ACCEPT] IModMenuService unavailable; menu self-check skipped.");
+                Log.LogWarning("[SMA-UI-ACCEPT] IModMenuService unavailable; menu self-check skipped.");
                 return;
             }
 
             modMenu.Open();
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] menu-self-check opened={modMenu.IsOpen}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] menu-self-check opened={modMenu.IsOpen}");
             menuCloseAtFrame = Time.frameCount + 300;
         }
 
-        public override void OnUpdate()
+        internal void Tick()
         {
             if (menuCloseAtFrame <= 0 || Time.frameCount < menuCloseAtFrame)
                 return;
 
             menuCloseAtFrame = -1;
             modMenu?.Close();
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] menu-self-check closed visible={modMenu?.IsOpen}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] menu-self-check closed visible={modMenu?.IsOpen}");
         }
 
         // 声明式配置页的参考实现：四种控件各一个，其中 label / anchor / show 真的驱动测试按钮，
@@ -105,7 +109,7 @@ namespace SprocketModAPI.UiAcceptance
         {
             if (!SprocketApi.TryGetService<IModConfigService>(out IModConfigService? resolvedConfig))
             {
-                LoggerInstance.Warning("[SMA-UI-ACCEPT] IModConfigService unavailable; config page not registered.");
+                Log.LogWarning("[SMA-UI-ACCEPT] IModConfigService unavailable; config page not registered.");
                 return;
             }
 
@@ -129,11 +133,11 @@ namespace SprocketModAPI.UiAcceptance
                     }
                 });
                 config.Changed += OnConfigChanged;
-                LoggerInstance.Msg($"[SMA-UI-ACCEPT] config-page-registered entries={configPage.Snapshot.Entries.Count}");
+                Log.LogInfo($"[SMA-UI-ACCEPT] config-page-registered entries={configPage.Snapshot.Entries.Count}");
             }
             catch (Exception exception)
             {
-                LoggerInstance.Error($"[SMA-UI-ACCEPT] config page registration failed: {exception.Message}");
+                Log.LogError($"[SMA-UI-ACCEPT] config page registration failed: {exception.Message}");
                 configPage = null;
             }
         }
@@ -142,7 +146,7 @@ namespace SprocketModAPI.UiAcceptance
         {
             if (!string.Equals(args.ModId, "sprocketmodapi-ui-acceptance", StringComparison.Ordinal))
                 return;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] config-changed key={args.Key}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] config-changed key={args.Key}");
             ApplyConfigToButton();
         }
 
@@ -168,7 +172,7 @@ namespace SprocketModAPI.UiAcceptance
             }
             catch (Exception exception)
             {
-                LoggerInstance.Warning($"[SMA-UI-ACCEPT] applying config to the test button failed: {exception.Message}");
+                Log.LogWarning($"[SMA-UI-ACCEPT] applying config to the test button failed: {exception.Message}");
             }
         }
 
@@ -192,7 +196,7 @@ namespace SprocketModAPI.UiAcceptance
             Transform? parent = FindAcceptanceParent();
             if (parent == null)
             {
-                LoggerInstance.Warning("[SMA-UI-ACCEPT] no interactive Canvas found; expected active Canvas with GraphicRaycaster.");
+                Log.LogWarning("[SMA-UI-ACCEPT] no interactive Canvas found; expected active Canvas with GraphicRaycaster.");
                 return null;
             }
             if (testRoot != null)
@@ -217,7 +221,7 @@ namespace SprocketModAPI.UiAcceptance
             testRect.anchoredPosition = new Vector2(0f, 0f);
             parent = testRect;
             EventSystem? eventSystem = EventSystem.current;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] input eventSystem={(eventSystem == null ? "none" : eventSystem.name)} module={(eventSystem?.currentInputModule == null ? "none" : eventSystem.currentInputModule.GetType().Name)} canvas={testCanvas.name} raycaster={testRaycaster.isActiveAndEnabled} sorting={testCanvas.sortingOrder} rootActive={testRoot.activeInHierarchy}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] input eventSystem={(eventSystem == null ? "none" : eventSystem.name)} module={(eventSystem?.currentInputModule == null ? "none" : eventSystem.currentInputModule.GetType().Name)} canvas={testCanvas.name} raycaster={testRaycaster.isActiveAndEnabled} sorting={testCanvas.sortingOrder} rootActive={testRoot.activeInHierarchy}");
             return parent;
         }
 
@@ -232,19 +236,19 @@ namespace SprocketModAPI.UiAcceptance
                 Text = "MENU BUTTON TEST",
                 Selected = true,
                 AnchoredPosition = new Vector2(0f, -30f),
-                OnClick = () => LoggerInstance.Msg("[SMA-UI-ACCEPT] menu-button-clicked")
+                OnClick = () => Log.LogInfo("[SMA-UI-ACCEPT] menu-button-clicked")
             }).GetAwaiter().GetResult();
             if (menuResult.Succeeded)
             {
                 menuButton = menuResult.Value;
                 ApplyConfigToButton();
-                LoggerInstance.Msg("[SMA-UI-ACCEPT] menu-button-created");
+                Log.LogInfo("[SMA-UI-ACCEPT] menu-button-created");
             }
             else
-                LoggerInstance.Error($"[SMA-UI-ACCEPT] menu-button-failed code={menuResult.Failure} message={menuResult.Message}");
+                Log.LogError($"[SMA-UI-ACCEPT] menu-button-failed code={menuResult.Failure} message={menuResult.Message}");
         }
 
-        public override void OnDeinitializeMelon()
+        public override bool Unload()
         {
             if (ui != null)
                 ui.StatusChanged -= OnUiStatusChanged;
@@ -261,31 +265,32 @@ namespace SprocketModAPI.UiAcceptance
             if (testRoot != null)
                 UnityEngine.Object.Destroy(testRoot);
             testRoot = null;
-            LoggerInstance.Msg("[SMA-UI-ACCEPT] disposed");
+            Log.LogInfo("[SMA-UI-ACCEPT] disposed");
+            return true;
         }
 
         private void OnUiStatusChanged(object? sender, UiStatusChangedEventArgs args)
         {
             UiCapabilitySnapshot current = args.Current;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] status previousScene={args.Previous.SceneName} currentScene={current.SceneName} capabilities={current.Available} ready={current.IsMainMenuReady} generation={current.MenuGeneration}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] status previousScene={args.Previous.SceneName} currentScene={current.SceneName} capabilities={current.Available} ready={current.IsMainMenuReady} generation={current.MenuGeneration}");
             TryCreateControls(current);
         }
 
-        public override void OnSceneWasLoaded(int buildIndex, string sceneName)
+        internal void SceneLoaded(int buildIndex, string sceneName)
         {
             currentScene = sceneName;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] scene-loaded name={sceneName}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] scene-loaded name={sceneName}");
         }
 
-        public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
+        internal void SceneUnloaded(int buildIndex, string sceneName)
         {
             if (testRoot != null)
                 UnityEngine.Object.Destroy(testRoot);
             testRoot = null;
-            LoggerInstance.Msg($"[SMA-UI-ACCEPT] scene-unloaded name={sceneName}");
+            Log.LogInfo($"[SMA-UI-ACCEPT] scene-unloaded name={sceneName}");
         }
 
-        private static Transform? FindAcceptanceParent()
+        private Transform? FindAcceptanceParent()
         {
             Canvas[] canvases = UnityEngine.Object.FindObjectsOfType<Canvas>();
             foreach (Canvas canvas in canvases)
@@ -295,11 +300,47 @@ namespace SprocketModAPI.UiAcceptance
                 GraphicRaycaster? raycaster = canvas.GetComponent<GraphicRaycaster>();
                 if (raycaster != null && raycaster.isActiveAndEnabled)
                 {
-                    MelonLogger.Msg($"[SMA-UI-ACCEPT] parent-canvas name={canvas.name} mode={canvas.renderMode} raycaster={raycaster.enabled}");
+                    Log.LogInfo($"[SMA-UI-ACCEPT] parent-canvas name={canvas.name} mode={canvas.renderMode} raycaster={raycaster.enabled}");
                     return canvas.transform;
                 }
             }
             return null;
+        }
+    }
+
+    // BepInEx 没有每帧与场景回调；这个注入组件驱动验收模组。
+    internal sealed class UiAcceptanceDriver : MonoBehaviour
+    {
+        private UiAcceptanceMod? host;
+        private int lastHandle = int.MinValue;
+        private int lastBuildIndex = -1;
+        private string lastName = "";
+
+        public UiAcceptanceDriver(IntPtr ptr) : base(ptr)
+        {
+        }
+
+        public void Configure(UiAcceptanceMod mod) => host = mod;
+
+        private void Update()
+        {
+            UiAcceptanceMod? current = host;
+            if (current == null)
+                return;
+
+            current.Tick();
+
+            Scene active = SceneManager.GetActiveScene();
+            if (active.handle == lastHandle)
+                return;
+
+            if (lastHandle != int.MinValue)
+                current.SceneUnloaded(lastBuildIndex, lastName);
+
+            lastHandle = active.handle;
+            lastBuildIndex = active.buildIndex;
+            lastName = active.name;
+            current.SceneLoaded(lastBuildIndex, lastName);
         }
     }
 }

@@ -3,16 +3,15 @@ using System.Collections.Generic;
 
 namespace SprocketModAPI
 {
-    // 模组在 MelonLoader 中的加载形态；禁用条目形态无法确定时用 `Unknown`。
+    // 模组在 BepInEx 中的加载形态；禁用条目形态无法确定时用 `Unknown`。
     public enum ModKind
     {
         Unknown = 0,
-        Mod = 1,
         Plugin = 2
     }
 
     // 单个模组的只读元数据快照。来源与优先级见 `docs/mod-metadata.md`：
-    // `Sprocket.Mod.*` 程序集元数据优先，其次 `MelonInfo`，最后退化为程序集名或文件名；
+    // `Sprocket.Mod.*` 程序集元数据优先，其次 `BepInPlugin`，最后退化为程序集名或文件名；
     // 缺失字段一律为空，不抛异常。
     public sealed class ModMetadata
     {
@@ -26,7 +25,10 @@ namespace SprocketModAPI
         public string DisplayName { get; init; } = "";
         public string Version { get; init; } = "";
         public IReadOnlyList<string> Authors { get; init; } = Array.Empty<string>();
+
+        // 额外致谢；`BepInPlugin` 没有该字段，只从 `Sprocket.Mod.Credits` 读取。
         public string Credits { get; init; } = "";
+
         public string Description { get; init; } = "";
         public string Repository { get; init; } = "";
         public string Homepage { get; init; } = "";
@@ -44,20 +46,21 @@ namespace SprocketModAPI
         public IReadOnlyDictionary<string, string> RawMetadata { get; init; } =
             new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // 声明的兼容游戏，格式 `Developer/Name`；Universal 不出现在这里。
-        public IReadOnlyList<string> Games { get; init; } = Array.Empty<string>();
-
-        public IReadOnlyList<string> OptionalDependencies { get; init; } = Array.Empty<string>();
+        // 声明依赖的插件 GUID；BepInEx 用 GUID 而不是程序集名表达依赖。
         public IReadOnlyList<string> RequiredDependencies { get; init; } = Array.Empty<string>();
-        public IReadOnlyList<string> IncompatibleAssemblies { get; init; } = Array.Empty<string>();
-        public string MelonLoaderVersion { get; init; } = "";
+
+        // 声明软依赖的插件 GUID；缺失不影响加载。
+        public IReadOnlyList<string> OptionalDependencies { get; init; } = Array.Empty<string>();
+
+        // 声明互斥的插件 GUID。
+        public IReadOnlyList<string> IncompatiblePlugins { get; init; } = Array.Empty<string>();
 
         // 是否来自磁盘上的 `*.dll.disable`。加载中的模组恒为 `false`；
         // 禁用条目由菜单模块扫描磁盘补齐，本次不加载。
         public bool IsDisabled { get; init; }
     }
 
-    // 只读元数据服务。快照在模组注册/注销后变化，通过 `Changed` 通知。
+    // 只读元数据服务。快照在插件注册/注销后变化，通过 `Changed` 通知。
     // 事件在主线程发布，参数不暴露内部集合。
     public interface IModMetadataService
     {

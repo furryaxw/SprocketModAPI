@@ -1,9 +1,10 @@
 using System;
 using System.Reflection;
-using MelonLoader;
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using UnityEngine;
+using UnityEngine.SceneManagement;
 
-[assembly: MelonInfo(typeof(SprocketModAPI.ApiMod), "Sprocket Mod API", "0.3.0", "furryAxw")]
-[assembly: MelonGame("HD", "Sprocket")]
 [assembly: AssemblyMetadata("Sprocket.Mod.Id", "furryaxw.sprocket-mod-api")]
 [assembly: AssemblyMetadata("Sprocket.Mod.DisplayName", "Sprocket Mod API")]
 [assembly: AssemblyMetadata("Sprocket.Mod.Description", "Shared runtime library: keybindings, input routing, native UI, mod metadata, declarative config and the in-game mod menu.")]
@@ -18,7 +19,7 @@ namespace SprocketModAPI
     {
         private static ServiceRegistry? registry;
 
-    public static Version ApiVersion { get; } = new(2, 0);
+        public static Version ApiVersion { get; } = new(2, 0);
 
         public static bool IsCompatible(Version requested)
             => requested.Major == ApiVersion.Major && requested.Minor <= ApiVersion.Minor;
@@ -52,15 +53,19 @@ namespace SprocketModAPI
         }
     }
 
-    public sealed class ApiMod : MelonMod
+    [BepInPlugin(PluginGuid, "Sprocket Mod API", "0.3.0")]
+    public sealed class ApiMod : BasePlugin
     {
+        internal const string PluginGuid = "furryaxw.sprocket-mod-api";
+        private const string ModVersion = "0.3.0";
+
         private ServiceRegistry? services;
         private RuntimeModuleContext? context;
         private IRuntimeModule[] modules = Array.Empty<IRuntimeModule>();
 
-        public override void OnInitializeMelon()
+        public override void Load()
         {
-            services = new ServiceRegistry(LoggerInstance.Error);
+            services = new ServiceRegistry(Log.LogError);
             SprocketApi.Attach(services);
 
             // ModConfig 必须最先：键位与 UI 模块的调试开关由 API 自身的诊断设置提供服务（ApiSelfSettings）。
@@ -73,33 +78,38 @@ namespace SprocketModAPI
                 new ModMenuModule()
             };
 
-            context = new RuntimeModuleContext(services, LoggerInstance.Warning, LoggerInstance.Error, LoggerInstance.Msg);
+            context = new RuntimeModuleContext(services, Log.LogWarning, Log.LogError, Log.LogInfo);
             int failures = RuntimeModuleHost.InitializeAll(modules, context);
             if (failures != 0)
-                LoggerInstance.Warning($"Sprocket Mod API {Info.Version} initialized with {failures} module(s) unavailable; the remaining services are still registered.");
+                Log.LogWarning($"Sprocket Mod API {ModVersion} initialized with {failures} module(s) unavailable; the remaining services are still registered.");
 
-            LoggerInstance.Msg($"Sprocket Mod API {Info.Version} initialized (API {SprocketApi.ApiVersion}).");
+            AddComponent<ApiDriver>().Configure(this);
+            Log.LogInfo($"Sprocket Mod API {ModVersion} initialized (API {SprocketApi.ApiVersion}).");
         }
 
-        public override void OnUpdate()
+        public override bool Unload()
+        {
+            ShutdownModules();
+            return true;
+        }
+
+        internal void Tick()
         {
             foreach (IRuntimeModule module in modules)
                 module.Update();
         }
 
-        public override void OnSceneWasLoaded(int buildIndex, string sceneName)
+        internal void SceneLoaded(int buildIndex, string sceneName)
         {
             foreach (IRuntimeModule module in modules)
                 module.SceneLoaded(buildIndex, sceneName);
         }
 
-        public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
+        internal void SceneUnloaded(int buildIndex, string sceneName)
         {
             foreach (IRuntimeModule module in modules)
                 module.SceneUnloaded(buildIndex, sceneName);
         }
-
-        public override void OnDeinitializeMelon() => ShutdownModules();
 
         private void ShutdownModules()
         {
@@ -115,6 +125,43 @@ namespace SprocketModAPI
                 current.Dispose();
                 services = null;
             }
+        }
+    }
+
+    // BepInEx 没有每帧与场景回调；这个注入组件驱动模块的 Update，并在活动场景句柄变化时
+    // 依次发布旧场景的卸载与新场景的加载。
+    internal sealed class ApiDriver : MonoBehaviour
+    {
+        private ApiMod? host;
+        private int lastHandle = int.MinValue;
+        private int lastBuildIndex = -1;
+        private string lastName = "";
+
+        public ApiDriver(IntPtr ptr) : base(ptr)
+        {
+        }
+
+        public void Configure(ApiMod mod) => host = mod;
+
+        private void Update()
+        {
+            ApiMod? current = host;
+            if (current == null)
+                return;
+
+            current.Tick();
+
+            Scene active = SceneManager.GetActiveScene();
+            if (active.handle == lastHandle)
+                return;
+
+            if (lastHandle != int.MinValue)
+                current.SceneUnloaded(lastBuildIndex, lastName);
+
+            lastHandle = active.handle;
+            lastBuildIndex = active.buildIndex;
+            lastName = active.name;
+            current.SceneLoaded(lastBuildIndex, lastName);
         }
     }
 }

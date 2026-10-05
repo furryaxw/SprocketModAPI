@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Il2CppSprocket.Selection;
-using Il2CppSprocket.SettingConfiguration;
-using Il2CppSprocket.UI;
+using Sprocket.Selection;
+using Sprocket.SettingConfiguration;
+using Sprocket.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
@@ -45,7 +45,7 @@ namespace SprocketModAPI
         private Image? uiEntryImage;
         private Button? uiEntryButton;
         private Outline? uiEntryOutline;
-        private Il2CppTMPro.TextMeshProUGUI? uiEntryLabel;
+        private TMPro.TextMeshProUGUI? uiEntryLabel;
         private GameObject? observedSettingsRoot;
         private RectTransform? observedActionButtons;
         private SettingsMenu? settingsMenu;
@@ -576,9 +576,9 @@ namespace SprocketModAPI
                 return 0f;
 
             Selectable? native = observedActionButtons == null ? null : FindNativeSelectable(observedActionButtons);
-            Il2CppTMPro.TextMeshProUGUI? nativeLabel = native == null
+            TMPro.TextMeshProUGUI? nativeLabel = native == null
                 ? null
-                : native.GetComponentInChildren<Il2CppTMPro.TextMeshProUGUI>(true);
+                : native.GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
             float maxFontSize = nativeLabel != null && nativeLabel.fontSize > 0f
                 ? nativeLabel.fontSize * MathF.Max(canvasScale, 0.1f)
                 : EntryFontSize;
@@ -649,8 +649,8 @@ namespace SprocketModAPI
 
                 ColorBlock states = native.colors;
                 Image? nativeImage = native.targetGraphic as Image;
-                Il2CppTMPro.TextMeshProUGUI? nativeLabel =
-                    native.GetComponentInChildren<Il2CppTMPro.TextMeshProUGUI>(true);
+                TMPro.TextMeshProUGUI? nativeLabel =
+                    native.GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
                 Outline? nativeOutline = native.GetComponent<Outline>();
 
                 var sample = new ModMenuStyle.EntryAppearance(
@@ -752,10 +752,10 @@ namespace SprocketModAPI
             GameObject label_node = new("Label");
             label_node.transform.SetParent(node.transform, false);
             label_node.AddComponent<RectTransform>();
-            Il2CppTMPro.TextMeshProUGUI text = label_node.AddComponent<Il2CppTMPro.TextMeshProUGUI>();
+            TMPro.TextMeshProUGUI text = label_node.AddComponent<TMPro.TextMeshProUGUI>();
             text.text = label;
             text.fontSize = appearance.FontSize;
-            text.alignment = Il2CppTMPro.TextAlignmentOptions.Center;
+            text.alignment = TMPro.TextAlignmentOptions.Center;
             text.color = Color(appearance.Text);
             text.enableWordWrapping = false;
             text.raycastTarget = false;

@@ -21,15 +21,14 @@ namespace SprocketModAPI
         internal string AssemblyName { get; init; } = "";
         internal string Location { get; init; } = "";
         internal string AssemblyHash { get; init; } = "";
-        internal IReadOnlyList<string> Games { get; init; } = Array.Empty<string>();
         internal IReadOnlyList<string> OptionalDependencies { get; init; } = Array.Empty<string>();
         internal IReadOnlyList<string> RequiredDependencies { get; init; } = Array.Empty<string>();
-        internal IReadOnlyList<string> IncompatibleAssemblies { get; init; } = Array.Empty<string>();
+        internal IReadOnlyList<string> IncompatiblePlugins { get; init; } = Array.Empty<string>();
 
-        // 必需依赖里本机找不到的程序集；非空表示这个模组可能加载异常。
+        // 必需依赖里本机找不到的插件；非空表示这个模组可能加载异常。
         internal IReadOnlyList<string> MissingDependencies { get; init; } = Array.Empty<string>();
 
-        // 声明的「不兼容程序集」里，本机确实存在的那一个（存在即冲突）。
+        // 声明的「不兼容插件」里，本机确实存在的那一个（存在即冲突）。
         internal bool HasIncompatiblePresent { get; init; }
         internal bool IsDisabled { get; init; }
 
@@ -43,7 +42,7 @@ namespace SprocketModAPI
 
         internal string KindLabel => IsDisabled
             ? "Disabled"
-            : Kind == ModKind.Plugin ? "Plugin" : Kind == ModKind.Mod ? "Mod" : "Unknown";
+            : Kind == ModKind.Plugin ? "Plugin" : "Unknown";
     }
 
     // 菜单列表的纯逻辑：合并「已加载元数据 + 禁用文件 + 配置页注册」，并提供搜索过滤。
@@ -73,6 +72,7 @@ namespace SprocketModAPI
                     AddKnown(known, ModAssemblyIndex.Stem(metadata.Location));
                 }
 
+                AddKnown(known, metadata.Id);
                 AddKnown(known, metadata.AssemblyName);
                 AddKnown(known, metadata.DisplayName);
             }
@@ -151,7 +151,7 @@ namespace SprocketModAPI
         {
             string authors = string.Join(", ", metadata.Authors);
             string configModId = ResolveConfigModId(metadata, configIds);
-            string kindLabel = metadata.Kind == ModKind.Plugin ? "Plugin" : metadata.Kind == ModKind.Mod ? "Mod" : "Unknown";
+            string kindLabel = metadata.Kind == ModKind.Plugin ? "Plugin" : "Unknown";
             IReadOnlyList<string> missing = FindMissingDependencies(metadata, knownAssemblies);
 
             return new ModMenuRow
@@ -170,19 +170,18 @@ namespace SprocketModAPI
                 AssemblyName = metadata.AssemblyName,
                 Location = metadata.Location,
                 AssemblyHash = metadata.AssemblyHash,
-                Games = metadata.Games,
                 OptionalDependencies = metadata.OptionalDependencies,
                 RequiredDependencies = metadata.RequiredDependencies,
-                IncompatibleAssemblies = metadata.IncompatibleAssemblies,
+                IncompatiblePlugins = metadata.IncompatiblePlugins,
                 MissingDependencies = missing,
-                HasIncompatiblePresent = metadata.IncompatibleAssemblies.Any(name => knownAssemblies.Contains(name)),
+                HasIncompatiblePresent = metadata.IncompatiblePlugins.Any(guid => knownAssemblies.Contains(guid)),
                 IsDisabled = isDisabled,
                 ConfigModId = configModId,
                 SearchText = Join(metadata.Id, metadata.DisplayName)
             };
         }
 
-        // 必需依赖里本机找不到的程序集；自身名字与可选依赖都不参与判断。
+        // 必需依赖里本机找不到的插件；自身名字与可选依赖都不参与判断。
         internal static IReadOnlyList<string> FindMissingDependencies(ModMetadata metadata, IReadOnlyCollection<string> knownAssemblies)
         {
             if (metadata.RequiredDependencies.Count == 0)
@@ -197,7 +196,8 @@ namespace SprocketModAPI
                     continue;
                 string name = dependency.Trim();
                 if (name.Equals(metadata.AssemblyName, StringComparison.OrdinalIgnoreCase)
-                    || name.Equals(metadata.DisplayName, StringComparison.OrdinalIgnoreCase))
+                    || name.Equals(metadata.DisplayName, StringComparison.OrdinalIgnoreCase)
+                    || name.Equals(metadata.Id, StringComparison.OrdinalIgnoreCase))
                     continue;
                 if (!known.Contains(name) && seen.Add(name))
                     missing.Add(name);

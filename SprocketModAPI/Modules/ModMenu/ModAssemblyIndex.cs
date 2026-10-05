@@ -6,9 +6,8 @@ namespace SprocketModAPI
 {
     // 目录里可用的程序集名索引（按文件名主干）。
     //
-    // 依赖检查不能只看已注册的 melon：`MelonBase.RegisteredMelons` 不含 `UserLibs` 里的库
-    // （例如 `SprocketDepth`），而模组可以合法地依赖它们。所以这里把三个根目录下的
-    // `*.dll` / `*.dll.disable` 文件名主干都算作「本机存在该程序集」。
+    // 已加载的插件表不含被动引用的库（例如 `SprocketDepth`），而模组可以合法地依赖它们。
+    // 所以这里把扫描目录下的 `*.dll` / `*.dll.disable` 文件名主干都算作「本机存在该程序集」。
     internal static class ModAssemblyIndex
     {
         internal static IReadOnlyList<string> Collect(params string[] directories)

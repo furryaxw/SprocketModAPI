@@ -322,9 +322,9 @@ namespace SprocketModAPI
                 return;
 
             Selectable? native = observedActionButtons == null ? null : FindNativeSelectable(observedActionButtons);
-            Il2CppTMPro.TextMeshProUGUI? nativeLabel = native == null
+            TMPro.TextMeshProUGUI? nativeLabel = native == null
                 ? null
-                : native.GetComponentInChildren<Il2CppTMPro.TextMeshProUGUI>(true);
+                : native.GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
             float maxFontSize = nativeLabel != null && nativeLabel.fontSize > 0f
                 ? nativeLabel.fontSize * MathF.Max(canvasScale, 0.1f)
                 : 12f;
@@ -365,7 +365,7 @@ namespace SprocketModAPI
                     button.colors = colors;
                 }
 
-                Il2CppTMPro.TextMeshProUGUI? nativeLabel = native.GetComponentInChildren<Il2CppTMPro.TextMeshProUGUI>(true);
+                TMPro.TextMeshProUGUI? nativeLabel = native.GetComponentInChildren<TMPro.TextMeshProUGUI>(true);
                 if (uiEntryLabel != null && nativeLabel != null)
                     uiEntryLabel.color = nativeLabel.color;
             }

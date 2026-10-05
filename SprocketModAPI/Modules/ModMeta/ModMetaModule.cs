@@ -1,21 +1,21 @@
 using System;
-using MelonLoader;
+using BepInEx.Unity.IL2CPP;
 
 namespace SprocketModAPI
 {
     // 模组元数据模块：向注册表提供 `IModMetadataService`。
-    // 快照在初始化时建立；已注册模组数量变化（后续加载或注销）时在 `Update` 中重建。
+    // 快照在初始化时建立；已加载插件数量变化时在 `Update` 中重建。
     internal sealed class ModMetaModule : IRuntimeModule
     {
         private ModMetadataService? service;
         private IDisposable? registration;
-        private int lastRegisteredCount = -1;
+        private int lastPluginCount = -1;
 
         public void Initialize(RuntimeModuleContext context)
         {
-            service = new ModMetadataService(new MelonLoaderModSource(context.Warn));
+            service = new ModMetadataService(new BepInExPluginSource(context.Warn));
             service.Refresh();
-            lastRegisteredCount = SafeRegisteredCount();
+            lastPluginCount = SafePluginCount();
             registration = context.Services.Register<IModMetadataService>(service);
         }
 
@@ -25,10 +25,10 @@ namespace SprocketModAPI
             if (current == null)
                 return;
 
-            int count = SafeRegisteredCount();
-            if (count != lastRegisteredCount)
+            int count = SafePluginCount();
+            if (count != lastPluginCount)
             {
-                lastRegisteredCount = count;
+                lastPluginCount = count;
                 current.Refresh();
             }
         }
@@ -44,15 +44,15 @@ namespace SprocketModAPI
             service = null;
         }
 
-        private static int SafeRegisteredCount()
+        private static int SafePluginCount()
         {
             try
             {
-                return MelonBase.RegisteredMelons.Count;
+                return IL2CPPChainloader.Instance.Plugins.Count;
             }
             catch (Exception)
             {
-                // MelonLoader 尚未完成注册时不应让 API 初始化失败。
+                // 链加载器尚未完成注册时不应让 API 初始化失败。
                 return -1;
             }
         }

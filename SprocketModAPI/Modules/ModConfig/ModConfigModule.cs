@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using MelonLoader.Utils;
 
 namespace SprocketModAPI
 {
@@ -15,7 +14,7 @@ namespace SprocketModAPI
 
         public void Initialize(RuntimeModuleContext context)
         {
-            string root = Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "modconfig");
+            string root = Path.Combine(ModPaths.ModDataRoot, "modconfig");
             service = new ModConfigService(root, context.Warn);
             registration = context.Services.Register<IModConfigService>(service);
 

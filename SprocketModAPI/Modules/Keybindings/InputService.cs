@@ -4,8 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using MelonLoader.Utils;
-using Il2CppTMPro;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -40,7 +39,7 @@ namespace SprocketModAPI
             this.error = error;
             debug = new KeybindingDebugLog(ApiSelfSettings.Current, warn);
             nativeBindingReader = new NativeInputBindingReader(warn);
-            string filePath = Path.Combine(MelonEnvironment.UserDataDirectory, "SprocketModAPI", "keybindings.json");
+            string filePath = Path.Combine(ModPaths.ModDataRoot, "keybindings.json");
             store = new KeybindingStore(filePath, warn);
             foreach (var item in store.Load())
                 retained[item.Key] = item.Value;

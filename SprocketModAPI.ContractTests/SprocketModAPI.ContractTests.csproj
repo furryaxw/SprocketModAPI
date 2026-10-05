@@ -1,13 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net6.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>disable</ImplicitUsings></PropertyGroup>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <SprocketGameRoot Condition="'$(SprocketGameRoot)' == '' and '$(SPROCKET_GAME_ROOT)' != ''">$(SPROCKET_GAME_ROOT)</SprocketGameRoot>
+    <SprocketGameRoot Condition="'$(SprocketGameRoot)' == ''">G:\Sprocket0.2.55.5</SprocketGameRoot>
+    <BepInExCore>$(SprocketGameRoot)\BepInEx\core</BepInExCore>
+    <GameInterop>$(SprocketGameRoot)\BepInEx\interop</GameInterop>
+  </PropertyGroup>
   <ItemGroup>
     <!-- FIX: Offline contract runs must never trigger the API project's
-         PostBuild copy into the live game Mods directory. -->
+         PostBuild copy into the live game plugins directory. -->
     <ProjectReference Include="..\SprocketModAPI\SprocketModAPI.csproj" AdditionalProperties="SkipModDeploy=true" />
-    <Reference Include="Il2Cppmscorlib"><HintPath>..\..\..\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="Il2CppInterop.Runtime"><HintPath>..\..\..\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="MelonLoader"><HintPath>..\..\..\MelonLoader\net6\MelonLoader.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="Unity.InputSystem"><HintPath>..\..\..\MelonLoader\Il2CppAssemblies\Unity.InputSystem.dll</HintPath><Private>true</Private></Reference>
-    <Reference Include="UnityEngine.CoreModule"><HintPath>..\..\..\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExCore)\0Harmony.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="BepInEx.Core"><HintPath>$(BepInExCore)\BepInEx.Core.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="BepInEx.Unity.Common"><HintPath>$(BepInExCore)\BepInEx.Unity.Common.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="BepInEx.Unity.IL2CPP"><HintPath>$(BepInExCore)\BepInEx.Unity.IL2CPP.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="SemanticVersioning"><HintPath>$(BepInExCore)\SemanticVersioning.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Il2Cppmscorlib"><HintPath>$(GameInterop)\Il2Cppmscorlib.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Il2CppInterop.Runtime"><HintPath>$(BepInExCore)\Il2CppInterop.Runtime.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Unity.InputSystem"><HintPath>$(GameInterop)\Unity.InputSystem.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(GameInterop)\UnityEngine.CoreModule.dll</HintPath><Private>true</Private></Reference>
   </ItemGroup>
 </Project>

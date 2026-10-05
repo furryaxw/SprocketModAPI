@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using Il2CppTMPro;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -148,16 +148,16 @@ namespace SprocketModAPI
 
             bool hasDependencyInfo = row.RequiredDependencies.Count != 0
                 || row.MissingDependencies.Count != 0 || row.OptionalDependencies.Count != 0
-                || row.IncompatibleAssemblies.Count != 0 || row.HasIncompatiblePresent;
+                || row.IncompatiblePlugins.Count != 0 || row.HasIncompatiblePresent;
             if (hasDependencyInfo)
             {
                 AddSectionHeader("Dependencies", uiDetailContent!, uiDetailObjects);
                 AddDetailRow("Requires", row.RequiredDependencies);
                 AddDetailRow("Missing", row.MissingDependencies);
                 AddDetailRow("Optional deps", row.OptionalDependencies);
-                AddDetailRow("Incompatible", row.IncompatibleAssemblies);
+                AddDetailRow("Incompatible", row.IncompatiblePlugins);
                 if (row.HasIncompatiblePresent)
-                    AddDetailRow("Conflict", "an incompatible assembly is installed");
+                    AddDetailRow("Conflict", "an incompatible plugin is installed");
             }
 
             AddSectionHeader("Files", uiDetailContent!, uiDetailObjects);

@@ -8,7 +8,7 @@
 ```csharp
 private IModConfigRegistration? config;
 
-public override void OnInitializeMelon()
+public override void Load()
 {
     if (!SprocketApi.TryGetService<IModConfigService>(out var service))
         return;
@@ -32,7 +32,11 @@ public override void OnInitializeMelon()
     });
 }
 
-public override void OnDeinitializeMelon() => config?.Dispose();
+public override bool Unload()
+{
+    config?.Dispose();
+    return true;
+}
 ```
 
 ## 读取与写入

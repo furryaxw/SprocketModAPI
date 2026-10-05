@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Il2CppTMPro;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
@@ -86,7 +86,7 @@ namespace SprocketModAPI
         private GameObject? uiRoot;
         private GameObject? uiEntryObject;
         private RectTransform? uiEntryRect;
-        private Il2CppTMPro.TextMeshProUGUI? uiEntryLabel;
+        private TMPro.TextMeshProUGUI? uiEntryLabel;
         private GameObject? uiBackdrop;
         private GameObject? uiWindow;
         private TMP_InputField? uiSearchInput;

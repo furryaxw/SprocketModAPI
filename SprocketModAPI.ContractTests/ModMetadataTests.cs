@@ -7,31 +7,27 @@ internal static class ModMetadataTests
     internal static void Run()
     {
         CheckDeclaredMetadataWins();
-        CheckMelonInfoFallback();
+        CheckPluginInfoFallback();
         CheckAssemblyOnlyFallback();
         CheckFilenameFallback();
         CheckEmptyDescriptorDegrades();
         CheckServiceSnapshotAndChangeNotification();
     }
 
-    // `Sprocket.Mod.*` 优先于 MelonInfo，且列表字段去重保序。
+    // `Sprocket.Mod.*` 优先于 `BepInPlugin`，且列表字段去重保序。
     private static void CheckDeclaredMetadataWins()
     {
         ModMetadata entry = ModMetadataReader.Read(new LoadedModDescriptor
         {
-            MelonName = "Raw Melon Name",
-            MelonVersion = "0.9.0",
-            MelonAuthor = "rawAuthor",
-            AdditionalCredits = "extra hands",
-            Kind = ModKind.Mod,
+            PluginName = "Raw Plugin Name",
+            PluginVersion = "0.9.0",
+            Kind = ModKind.Plugin,
             AssemblyName = "DemoAssembly",
             Location = @"C:\Game\Mods\DemoAssembly.dll",
             AssemblyHash = "ABCDEF",
-            Games = new[] { "HD/Sprocket" },
-            OptionalDependencies = new[] { "SprocketModAPI" },
-            RequiredDependencies = new[] { "SprocketDepth" },
-            IncompatibleAssemblies = new[] { "LegacyOverhaul" },
-            MelonLoaderVersion = ">= 0.7.3",
+            OptionalDependencies = new[] { "furryaxw.sprocketmodapi" },
+            RequiredDependencies = new[] { "furryaxw.sprocket-depth" },
+            IncompatiblePlugins = new[] { "legacy.overhaul" },
             Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Sprocket.Mod.Id"] = "furryaxw.demo",
@@ -39,47 +35,45 @@ internal static class ModMetadataTests
                 ["Sprocket.Mod.Description"] = "does demo things",
                 ["Sprocket.Mod.Authors"] = "A, B , a",
                 ["Sprocket.Mod.Repository"] = "furryaxw/Demo",
+                ["Sprocket.Mod.Credits"] = "extra hands",
             }
         });
 
         Check(entry.Id == "furryaxw.demo" && entry.HasDeclaredId && entry.RegistryId == "furryaxw.demo", "declared id wins");
         Check(entry.DisplayName == "Nice Demo", "declared display name wins and is trimmed");
-        Check(entry.Version == "0.9.0", "version still comes from MelonInfo");
+        Check(entry.Version == "0.9.0", "version still comes from BepInPlugin");
         Check(entry.Authors.Count == 2 && entry.Authors[0] == "A" && entry.Authors[1] == "B", "authors split, trimmed and de-duplicated case-insensitively");
         Check(entry.Description == "does demo things" && entry.Repository == "furryaxw/Demo", "description and repository read");
-        Check(entry.Credits == "extra hands", "additional credits pass through");
-        Check(entry.Kind == ModKind.Mod && entry.AssemblyName == "DemoAssembly" && entry.AssemblyHash == "ABCDEF", "assembly identity passes through");
-        Check(entry.Games.Count == 1 && entry.Games[0] == "HD/Sprocket", "declared game compatibility passes through");
-        Check(entry.OptionalDependencies.Count == 1 && entry.OptionalDependencies[0] == "SprocketModAPI", "optional dependencies pass through");
-        Check(entry.RequiredDependencies.Count == 1 && entry.RequiredDependencies[0] == "SprocketDepth", "required dependencies pass through");
-        Check(entry.IncompatibleAssemblies.Count == 1 && entry.IncompatibleAssemblies[0] == "LegacyOverhaul", "incompatible assemblies pass through");
-        Check(entry.MelonLoaderVersion == ">= 0.7.3", "MelonLoader version requirement passes through");
-        Check(entry.RawMetadata.Count == 5, "raw metadata is retained (tags removed)");
+        Check(entry.Credits == "extra hands", "credits are read from Sprocket.Mod.Credits");
+        Check(entry.Kind == ModKind.Plugin && entry.AssemblyName == "DemoAssembly" && entry.AssemblyHash == "ABCDEF", "assembly identity passes through");
+        Check(entry.OptionalDependencies.Count == 1 && entry.OptionalDependencies[0] == "furryaxw.sprocketmodapi", "optional dependency GUIDs pass through");
+        Check(entry.RequiredDependencies.Count == 1 && entry.RequiredDependencies[0] == "furryaxw.sprocket-depth", "required dependency GUIDs pass through");
+        Check(entry.IncompatiblePlugins.Count == 1 && entry.IncompatiblePlugins[0] == "legacy.overhaul", "incompatible plugin GUIDs pass through");
+        Check(entry.RawMetadata.Count == 6, "raw metadata is retained (tags removed)");
         Check(!entry.IsDisabled, "loaded mods are never reported as disabled");
     }
 
-    // 没有 `Sprocket.Mod.*` 时退回 MelonInfo，Id 派生为 `file:<程序集名>`。
-    private static void CheckMelonInfoFallback()
+    // 没有 `Sprocket.Mod.*` 时退回 `BepInPlugin`，Id 派生为 `file:<程序集名>`。
+    private static void CheckPluginInfoFallback()
     {
         ModMetadata entry = ModMetadataReader.Read(new LoadedModDescriptor
         {
-            MelonName = "Legacy Mod",
-            MelonVersion = "1.2.0",
-            MelonAuthor = "furryAxw",
+            PluginName = "Legacy Plugin",
+            PluginVersion = "1.2.0",
             Kind = ModKind.Plugin,
             AssemblyName = "LegacyAssembly",
             Location = @"C:\Game\Plugins\LegacyAssembly.dll"
         });
 
         Check(entry.Id == "file:LegacyAssembly" && !entry.HasDeclaredId, "id falls back to the assembly name");
-        Check(entry.DisplayName == "Legacy Mod", "display name falls back to MelonInfo name");
-        Check(entry.Version == "1.2.0", "version falls back to MelonInfo version");
-        Check(entry.Authors.Count == 1 && entry.Authors[0] == "furryAxw", "authors fall back to MelonInfo author");
+        Check(entry.DisplayName == "Legacy Plugin", "display name falls back to the BepInPlugin name");
+        Check(entry.Version == "1.2.0", "version falls back to the BepInPlugin version");
+        Check(entry.Authors.Count == 0 && entry.Credits.Length == 0, "BepInPlugin carries no author or credits so both stay empty");
         Check(entry.Description.Length == 0 && entry.Category.Length == 0, "absent fields degrade to empty instead of throwing");
         Check(entry.Kind == ModKind.Plugin, "plugin kind is preserved");
     }
 
-    // 纯类库（非 MelonMod/Plugin、无 MelonInfo）仍然能给出程序集身份。
+    // 纯类库（不是已加载插件、没有 `BepInPlugin`）仍然能给出程序集身份。
     private static void CheckAssemblyOnlyFallback()
     {
         ModMetadata entry = ModMetadataReader.Read(new LoadedModDescriptor
@@ -129,13 +123,13 @@ internal static class ModMetadataTests
         var source = new FakeSource();
         source.Items.Add(new LoadedModDescriptor
         {
-            MelonName = "Zeta Fix",
+            PluginName = "Zeta Fix",
             AssemblyName = "ZetaFix",
             Location = @"C:\Game\Mods\ZetaFix.dll"
         });
         source.Items.Add(new LoadedModDescriptor
         {
-            MelonName = "alpha tools",
+            PluginName = "alpha tools",
             AssemblyName = "AlphaTools",
             Location = @"C:\Game\Mods\AlphaTools.dll"
         });
@@ -161,7 +155,7 @@ internal static class ModMetadataTests
 
         source.Items.Add(new LoadedModDescriptor
         {
-            MelonName = "Beta Patch",
+            PluginName = "Beta Patch",
             AssemblyName = "BetaPatch",
             Location = @"C:\Game\Mods\BetaPatch.dll"
         });

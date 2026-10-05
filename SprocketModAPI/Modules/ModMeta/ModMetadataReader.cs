@@ -5,7 +5,7 @@ using System.IO;
 namespace SprocketModAPI
 {
     // 把 `LoadedModDescriptor` 合并为 `ModMetadata`。
-    // 纯函数式实现：不触碰 Unity、MelonLoader 或文件系统，可在离线合约测试中直接覆盖。
+    // 纯函数式实现：不触碰 Unity、BepInEx 或文件系统，可在离线合约测试中直接覆盖。
     // 优先级见 `docs/mod-metadata.md`；任何缺失都降级为空值，不抛异常。
     internal static class ModMetadataReader
     {
@@ -25,7 +25,7 @@ namespace SprocketModAPI
 
             string displayName = FirstNonEmpty(
                 Value(metadata, "DisplayName"),
-                descriptor.MelonName,
+                descriptor.PluginName,
                 descriptor.AssemblyName,
                 fileStem);
             if (displayName.Length == 0)
@@ -38,9 +38,9 @@ namespace SprocketModAPI
                 Id = declaredId.Length != 0 ? declaredId : $"file:{fallbackId}",
                 RegistryId = declaredId,
                 DisplayName = displayName,
-                Version = FirstNonEmpty(descriptor.MelonVersion, descriptor.InformationalVersion, descriptor.AssemblyVersion),
-                Authors = SplitList(FirstNonEmpty(Value(metadata, "Authors"), descriptor.MelonAuthor)),
-                Credits = descriptor.AdditionalCredits ?? "",
+                Version = FirstNonEmpty(Value(metadata, "Version"), descriptor.PluginVersion, descriptor.InformationalVersion, descriptor.AssemblyVersion),
+                Authors = SplitList(Value(metadata, "Authors")),
+                Credits = Value(metadata, "Credits"),
                 Description = Value(metadata, "Description"),
                 Repository = Value(metadata, "Repository"),
                 Homepage = Value(metadata, "Homepage"),
@@ -50,11 +50,9 @@ namespace SprocketModAPI
                 AssemblyName = descriptor.AssemblyName ?? "",
                 Location = descriptor.Location ?? "",
                 AssemblyHash = descriptor.AssemblyHash ?? "",
-                Games = descriptor.Games ?? Array.Empty<string>(),
-                OptionalDependencies = descriptor.OptionalDependencies ?? Array.Empty<string>(),
                 RequiredDependencies = descriptor.RequiredDependencies ?? Array.Empty<string>(),
-                IncompatibleAssemblies = descriptor.IncompatibleAssemblies ?? Array.Empty<string>(),
-                MelonLoaderVersion = descriptor.MelonLoaderVersion ?? "",
+                OptionalDependencies = descriptor.OptionalDependencies ?? Array.Empty<string>(),
+                IncompatiblePlugins = descriptor.IncompatiblePlugins ?? Array.Empty<string>(),
                 RawMetadata = metadata,
                 IsDisabled = false
             };

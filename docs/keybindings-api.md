@@ -7,7 +7,7 @@
 ```csharp
 private IInputActionHandle? toggle;
 
-public override void OnInitializeMelon()
+public override void Load()
 {
     if (!SprocketApi.TryGetService<IInputService>(out var input))
         return;
@@ -25,7 +25,11 @@ public override void OnInitializeMelon()
     toggle.Pressed += ToggleExample;
 }
 
-public override void OnDeinitializeMelon() => toggle?.Dispose();
+public override bool Unload()
+{
+    toggle?.Dispose();
+    return true;
+}
 ```
 
 每个动作提供主、副两个键位槽：

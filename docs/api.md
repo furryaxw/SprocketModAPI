@@ -7,7 +7,7 @@ if (!SprocketApi.IsCompatible(new Version(1, 0)))
     return;
 ```
 
-模组应引用游戏 `Mods` 目录中唯一的 `SprocketModAPI.dll`，并声明 `MelonAdditionalDependencies("SprocketModAPI")`。不要随模组分发另一份私有 API DLL。
+模组应引用 `BepInEx\plugins` 目录中唯一的 `SprocketModAPI.dll`，并声明 `[BepInDependency("furryaxw.sprocket-mod-api")]`。不要随模组分发另一份私有 API DLL。
 
 ## API 分类
 

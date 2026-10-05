@@ -71,14 +71,13 @@ internal static class ModMenuTests
                 Version = "2.8.0",
                 Authors = new[] { "furryAxw" },
                 Description = "热成像视觉",
-                Kind = ModKind.Mod,
+                Kind = ModKind.Plugin,
                 Location = @"C:\Game\Mods\SprocketThermal.dll",
                 AssemblyName = "SprocketThermal",
                 AssemblyHash = "ABCDEF",
-                Games = new[] { "HD/Sprocket" },
-                OptionalDependencies = new[] { "SprocketModAPI" },
-                RequiredDependencies = new[] { "SprocketDepth" },
-                IncompatibleAssemblies = new[] { "LegacyOverhaul" }
+                OptionalDependencies = new[] { "furryaxw.sprocketmodapi" },
+                RequiredDependencies = new[] { "furryaxw.sprocket-depth" },
+                IncompatiblePlugins = new[] { "legacy.overhaul" }
             },
             new()
             {
@@ -103,14 +102,13 @@ internal static class ModMenuTests
 
         ModMenuRow thermal = rows[1];
         Check(thermal.ConfigModId == "sprocket-thermal" && thermal.HasConfigPage, "config page is resolved through the mod id suffix");
-        Check(thermal.KindLabel == "Mod" && thermal.Authors == "furryAxw", "row exposes kind and authors");
-        Check(thermal.Games.Count == 1 && thermal.Games[0] == "HD/Sprocket"
-            && thermal.OptionalDependencies.Count == 1
+        Check(thermal.KindLabel == "Plugin" && thermal.Authors == "furryAxw", "row exposes kind and authors");
+        Check(thermal.OptionalDependencies.Count == 1 && thermal.OptionalDependencies[0] == "furryaxw.sprocketmodapi"
             && thermal.AssemblyName == "SprocketThermal" && thermal.AssemblyHash == "ABCDEF",
             "dependency and assembly details pass through to the menu row");
-        Check(thermal.RequiredDependencies.Count == 1 && thermal.RequiredDependencies[0] == "SprocketDepth"
-            && thermal.IncompatibleAssemblies.Count == 1 && thermal.IncompatibleAssemblies[0] == "LegacyOverhaul",
-            "required and incompatible dependencies reach the menu row");
+        Check(thermal.RequiredDependencies.Count == 1 && thermal.RequiredDependencies[0] == "furryaxw.sprocket-depth"
+            && thermal.IncompatiblePlugins.Count == 1 && thermal.IncompatiblePlugins[0] == "legacy.overhaul",
+            "required and incompatible plugin GUIDs reach the menu row");
 
         ModMenuRow shared = rows[0];
         Check(!shared.HasConfigPage, "mods without a config page are flagged");
@@ -171,41 +169,51 @@ internal static class ModMenuTests
                 Id = "furryaxw.sprocket-laser-rangefinder",
                 DisplayName = "Sprocket Laser Rangefinder",
                 AssemblyName = "SprocketLaserRangefinder",
-                RequiredDependencies = new[] { "SprocketModAPI", "SprocketDepth", "SprocketLaserRangefinder" },
-                IncompatibleAssemblies = new[] { "LegacyOverhaul" }
+                RequiredDependencies = new[]
+                {
+                    "furryaxw.sprocketmodapi",
+                    "furryaxw.sprocket-depth",
+                    "furryaxw.sprocket-laser-rangefinder",
+                    "SprocketLaserRangefinder"
+                },
+                IncompatiblePlugins = new[] { "legacy.overhaul" }
             }
         };
 
-        // 只把 API 当作已存在：SprocketDepth（UserLibs 里的库）应当被判为缺失。
+        // 只把 API 的插件 GUID 当作已存在：SprocketDepth 的插件 GUID 应当被判为缺失。
         IReadOnlyList<ModMenuRow> rows = ModMenuListModel.Build(loaded,
             Array.Empty<string>(), Array.Empty<string>(),
-            new[] { "SprocketModAPI" });
+            new[] { "furryaxw.sprocketmodapi" });
 
         Check(rows.Count == 1, "dependency test row is built");
-        Check(rows[0].MissingDependencies.Count == 1 && rows[0].MissingDependencies[0] == "SprocketDepth",
-            "only the genuinely absent dependency is reported (self reference ignored)");
-        Check(!rows[0].HasIncompatiblePresent, "an absent incompatible assembly is not a conflict");
+        Check(rows[0].MissingDependencies.Count == 1 && rows[0].MissingDependencies[0] == "furryaxw.sprocket-depth",
+            "only the genuinely absent dependency is reported (self reference by id and by assembly name ignored)");
+        Check(!rows[0].HasIncompatiblePresent, "an absent incompatible plugin is not a conflict");
 
         IReadOnlyList<ModMenuRow> complete = ModMenuListModel.Build(loaded,
             Array.Empty<string>(), Array.Empty<string>(),
-            new[] { "SprocketModAPI", "SprocketDepth", "LegacyOverhaul" });
+            new[] { "furryaxw.sprocketmodapi", "furryaxw.sprocket-depth", "legacy.overhaul" });
         Check(complete[0].MissingDependencies.Count == 0, "nothing is reported missing when every dependency is present");
-        Check(complete[0].HasIncompatiblePresent, "a present incompatible assembly is reported as a conflict");
+        Check(complete[0].HasIncompatiblePresent, "a present incompatible plugin is reported as a conflict");
 
         // 可选依赖缺失不算问题。
         IReadOnlyList<ModMenuRow> optional = ModMenuListModel.Build(new List<ModMetadata>
         {
-            new() { Id = "a", DisplayName = "A", AssemblyName = "A", OptionalDependencies = new[] { "NotInstalled" } }
+            new() { Id = "a", DisplayName = "A", AssemblyName = "A", OptionalDependencies = new[] { "not.installed" } }
         }, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
         Check(optional[0].MissingDependencies.Count == 0, "missing optional dependencies are not reported");
 
         // 禁用条目的文件名主干也算「存在」。
         IReadOnlyList<ModMenuRow> disabledKnown = ModMenuListModel.Build(new List<ModMetadata>
         {
-            new() { Id = "a", DisplayName = "A", AssemblyName = "A", RequiredDependencies = new[] { "SprocketDepth" } }
-        }, new[] { @"C:\Game\UserLibs\SprocketDepth.dll.disable" },
+            new()
+            {
+                Id = "a", DisplayName = "A", AssemblyName = "A",
+                RequiredDependencies = new[] { "furryaxw.sprocket-depth" }
+            }
+        }, new[] { @"C:\Game\Plugins\furryaxw.sprocket-depth.dll.disable" },
             Array.Empty<string>(), Array.Empty<string>());
-        Check(disabledKnown[0].MissingDependencies.Count == 0, "a disabled file still counts as an available assembly");
+        Check(disabledKnown[0].MissingDependencies.Count == 0, "a disabled file still counts as an available plugin");
     }
 
     // 目录索引把 `.dll` 与 `.dll.disable` 归一成同一个程序集名，并忽略无关文件。

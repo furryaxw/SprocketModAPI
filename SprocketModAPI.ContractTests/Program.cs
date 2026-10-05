@@ -244,16 +244,17 @@ internal static class Program
             && nativeLease.Contains("sendNavigationEvents = false"),
             "native settings input lease has capture, navigation isolation, and restoration paths");
         Check(api.Contains("new ModMetaModule()"), "metadata module is hosted through the common module list");
-        Check(modMetaSource.Contains("MelonBase.RegisteredMelons") && modMetaSource.Contains("MelonAssembly")
+        Check(modMetaSource.Contains("IL2CPPChainloader.Instance.Plugins") && modMetaSource.Contains("PluginInfo")
             && modMetaSource.Contains("AssemblyMetadataAttribute")
             && !modMetaSource.Contains("Assembly.Load"),
-            "metadata source reads registered melons and assembly metadata without loading assemblies");
-        Check(modMetaSource.Contains("MelonAdditionalDependenciesAttribute") && modMetaSource.Contains("MelonIncompatibleAssembliesAttribute")
-            && modMetaSource.Contains("CollectAssemblyNames"),
-            "metadata source reads required dependencies and incompatible assemblies from the assembly");
+            "metadata source reads the loaded plugin table and assembly metadata without loading assemblies");
+        Check(modMetaSource.Contains("BepInDependency") && modMetaSource.Contains("BepInIncompatibility")
+            && modMetaSource.Contains("DependencyGUID") && modMetaSource.Contains("IncompatibilityGUID")
+            && modMetaSource.Contains("CollectGuids"),
+            "metadata source reads required dependencies and incompatible plugins from the assembly");
         Check(modMenuWindow.Contains("AddDetailRow(\"Requires\"") && modMenuWindow.Contains("AddDetailRow(\"Incompatible\""),
-            "mod menu details show required dependencies and incompatible assemblies");
-        Check(modMetaModule.Contains("Register<IModMetadataService>") && modMetaModule.Contains("MelonBase.RegisteredMelons.Count"),
+            "mod menu details show required dependencies and incompatible plugins");
+        Check(modMetaModule.Contains("Register<IModMetadataService>") && modMetaModule.Contains("IL2CPPChainloader.Instance.Plugins.Count"),
             "metadata service is registered through a module and re-snapshots on registration changes");
         Check(modMetaReader.Contains("Sprocket.Mod.") && modMetaReader.Contains("file:"),
             "metadata reader implements the declared key prefix and identity fallback");
@@ -262,7 +263,7 @@ internal static class Program
             "cross-repository metadata contract documents ids, disable convention and static-read rule");
         Check(api.Contains("new ModConfigModule()"), "config module is hosted through the common module list");
         Check(modConfigModule.Contains("Register<IModConfigService>")
-            && modConfigModule.Contains("Path.Combine(MelonEnvironment.UserDataDirectory, \"SprocketModAPI\", \"modconfig\")"),
+            && modConfigModule.Contains("Path.Combine(ModPaths.ModDataRoot, \"modconfig\")"),
             "config service is registered through a module and persists under UserData/SprocketModAPI/modconfig");
         Check(modConfigModule.Contains("new ApiSelfSettings(") && apiSelfSettings.Contains("ModIdentity.ResolveModId")
             && apiSelfSettings.Contains("IModConfigRegistration"),
