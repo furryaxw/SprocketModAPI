@@ -54,7 +54,7 @@ keybindings.json.corrupt-YYYYMMDD-HHMMSS-fff.bak
 
 API 不修改游戏自身的 InputAction，只控制通过 `IInputService` 注册的模组动作。
 
-上下文由场景集合、菜单激活观察器和 EventSystem 当前选中对象共同解析。Sprocket `0.2.53.2` 在设计器和驾驶状态下保持 `Sandbox` 为 active scene，因此 API 分别以附加场景 `VehicleDesignerUI` 和 `VehicleControlUI` 识别 `Designer` 与 `Gameplay`。Settings 和 PauseMenu 使用激活生命周期观察器，文本输入则检查当前选中的 TMP 或 Unity InputField。固定优先级为：`TextInput > Settings > PauseMenu > Designer > MainMenu > Gameplay > OtherMenu`。
+上下文由场景集合、菜单激活观察器和 EventSystem 当前选中对象共同解析。Sprocket `0.2.55.5` 在设计器和驾驶状态下保持 `Sandbox` 为 active scene，因此 API 分别以附加场景 `VehicleDesignerUI` 和 `VehicleControlUI` 识别 `Designer` 与 `Gameplay`。Settings 和 PauseMenu 使用激活生命周期观察器，文本输入则检查当前选中的 TMP 或 Unity InputField。固定优先级为：`TextInput > Settings > PauseMenu > Designer > MainMenu > Gameplay > OtherMenu`。
 
 场景加载、卸载或上下文变化会立即进入 transition blocked 状态。只有连续两个 Update 观察到相同上下文后才恢复普通动作派发；稳定前只允许动作状态收敛，不产生新的 `Pressed`。
 

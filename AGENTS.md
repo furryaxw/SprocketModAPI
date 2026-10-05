@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`SprocketModAPI/` contains the net6 MelonLoader assembly. `Core/` owns only the public entry point, service registry, and common runtime-module lifecycle. `Modules/Keybindings/` owns all keybinding contracts, routing, persistence, management UI, and Settings observers. Future modules belong in their own `Modules/<Name>/` directory, may depend on Core, and must not depend on another module's internals. No game-native UI module exists yet; do not describe hand-built Unity UGUI as a Sprocket UI component service. `SprocketModAPI.ContractTests/` is a console-based offline contract suite. User documentation belongs in `docs/`, while release-facing changes belong in `README.md` and `RELEASE_NOTES.md`. `TODO.md` is a local, Git-ignored planning file and must not be staged.
+`SprocketModAPI/` contains the net6 BepInEx IL2CPP plugin assembly. `Core/` owns only the public entry point, service registry, and common runtime-module lifecycle. `Modules/Keybindings/` owns all keybinding contracts, routing, persistence, management UI, and Settings observers. Future modules belong in their own `Modules/<Name>/` directory, may depend on Core, and must not depend on another module's internals. No game-native UI module exists yet; do not describe hand-built Unity UGUI as a Sprocket UI component service. `SprocketModAPI.ContractTests/` is a console-based offline contract suite. User documentation belongs in `docs/`, while release-facing changes belong in `README.md` and `RELEASE_NOTES.md`. `TODO.md` is a local, Git-ignored planning file and must not be staged.
 
 ## Build, Test, and Development Commands
 
@@ -13,7 +13,7 @@ dotnet build .\SprocketModAPI\SprocketModAPI.csproj --configuration Release -p:S
 dotnet run --configuration Release --project .\SprocketModAPI.ContractTests\SprocketModAPI.ContractTests.csproj
 ```
 
-The build expects Sprocket and MelonLoader assemblies under `G:\Sprocket` by default. Use `-p:SprocketGameRoot="D:\Games\Sprocket"` for another installation. Omitting `SkipModDeploy` copies the DLL into the game's `Mods` directory; do this only for deliberate in-game testing.
+The build expects Sprocket and BepInEx assemblies under `G:\Sprocket0.2.55.5` by default. Use `-p:SprocketGameRoot="D:\Games\Sprocket"` for another installation. Omitting `SkipModDeploy` copies the DLL into the game's `BepInEx\plugins` directory; do this only for deliberate in-game testing.
 
 ## Comments & Documentation
 
@@ -26,7 +26,7 @@ Use C# with four-space indentation, nullable reference types enabled, and explic
 
 ## Testing Guidelines
 
-Add contract checks for every public API or persistence change. Name checks by observable behavior, not implementation detail. Keep source-layout assertions separate from behavioral tests. Always run the Release build and contract suite. For focus, scene, input, or UI changes, also test in Sprocket `0.2.53.2`; a successful build does not prove runtime acceptance.
+Add contract checks for every public API or persistence change. Name checks by observable behavior, not implementation detail. Keep source-layout assertions separate from behavioral tests. Always run the Release build and contract suite. For focus, scene, input, or UI changes, also test in Sprocket `0.2.55.5`; a successful build does not prove runtime acceptance.
 
 ## Commit & Pull Request Guidelines
 
