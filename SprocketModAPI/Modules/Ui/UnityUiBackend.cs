@@ -164,6 +164,38 @@ namespace SprocketModAPI
         public UiCapabilitySnapshot Capabilities { get; private set; }
         public event EventHandler<UiStatusChangedEventArgs>? StatusChanged;
 
+        // 已销毁的原生对象仍可能留下非空代理：`?.` 只检查引用，不会走 Unity 的判空语义，
+        // 直接访问 `isActiveAndEnabled` / `Visible` 会抛原生空引用。这里统一吞掉。
+        private static bool IsActiveAndEnabled(Behaviour? behaviour)
+        {
+            if (behaviour == null)
+                return false;
+
+            try
+            {
+                return behaviour.isActiveAndEnabled;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static bool IsVisible(MenuPanel? panel)
+        {
+            if (panel == null)
+                return false;
+
+            try
+            {
+                return panel.Visible;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         internal void Update()
         {
             if (disposed)
@@ -175,7 +207,7 @@ namespace SprocketModAPI
                 MainSceneRoot[] roots = Resources.FindObjectsOfTypeAll<MainSceneRoot>();
                 foreach (MainSceneRoot root in roots)
                 {
-                    if (root is MainMenu candidate && candidate.isActiveAndEnabled)
+                    if (root is MainMenu candidate && IsActiveAndEnabled(candidate))
                     {
                         mainMenu = candidate;
                         break;
@@ -205,10 +237,10 @@ namespace SprocketModAPI
                 return;
             }
             bool mainMenuScene = string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase);
-            bool mainMenuPanelReady = menuPanel != null && menuPanel.isActiveAndEnabled && mainMenuScene;
+            bool mainMenuPanelReady = IsActiveAndEnabled(menuPanel) && mainMenuScene;
             if (activeMenu == null && !mainMenuPanelReady)
             {
-                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=no-active-menu scene={currentSceneName} panelActive={menuPanel?.isActiveAndEnabled ?? false} panelVisible={menuPanel?.Visible ?? false}");
+                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=no-active-menu scene={currentSceneName} panelActive={IsActiveAndEnabled(menuPanel)} panelVisible={IsVisible(menuPanel)}");
                 PublishStatusIfChanged(false);
                 return;
             }
@@ -330,7 +362,7 @@ namespace SprocketModAPI
             if (definition.Parent == null && string.IsNullOrWhiteSpace(definition.BelowNativeButtonText))
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.InvalidParent, "Menu button parent is null.");
             Canvas? canvas = definition.Parent?.GetComponentInParent<Canvas>();
-            if (definition.Parent != null && (canvas == null || !canvas.isActiveAndEnabled || canvas.GetComponent<GraphicRaycaster>() == null))
+            if (definition.Parent != null && (canvas == null || !IsActiveAndEnabled(canvas) || canvas.GetComponent<GraphicRaycaster>() == null))
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.InvalidParent, "Menu button parent must be under an active Canvas with GraphicRaycaster.");
             if (!Capabilities.Supports(UiCapability.MenuButton))
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.TemplateNotFound, "No verified Sprocket Tab template is available.");
@@ -350,7 +382,7 @@ namespace SprocketModAPI
         {
             if (menuButtonTemplate == null)
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.TemplateNotFound, "Menu Button template is unavailable.");
-            if (menuPanel != null && menuPanel.isActiveAndEnabled)
+            if (IsActiveAndEnabled(menuPanel))
             {
                 UnityAction? factoryAction = definition.OnClick == null ? null : (UnityAction)WrapCallback(ownerId, "MenuButton", definition.OnClick)!;
                 Tab? tab = CreateRegisteredTab(menuPanel, definition.Text ?? "", factoryAction, definition.Enabled);
@@ -571,7 +603,7 @@ namespace SprocketModAPI
                 bool active;
                 try { active = tab != null && tab.gameObject != null && tab.gameObject.activeInHierarchy; }
                 catch (Exception) { active = false; }
-                if (disposed || registrationGeneration == generation || panel == null || !panel.isActiveAndEnabled)
+                if (disposed || registrationGeneration == generation || panel == null || !IsActiveAndEnabled(panel))
                     return false;
                 Tab? existing = createTab(panel, registeredText, action, enabled);
                 if (existing == null)

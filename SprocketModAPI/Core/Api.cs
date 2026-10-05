@@ -64,6 +64,7 @@ namespace SprocketModAPI
         private ServiceRegistry? services;
         private RuntimeModuleContext? context;
         private IRuntimeModule[] modules = Array.Empty<IRuntimeModule>();
+        private readonly HashSet<IRuntimeModule> failedModules = new();
         private bool tickLogged;
 
         public override void Load()
@@ -104,8 +105,22 @@ namespace SprocketModAPI
                 Log.LogInfo($"[SMA] driver tick running modules={modules.Length}");
             }
 
+            // 一个模块抛异常不能拖垮其余模块，也不能每帧刷屏：失败的模块只报一次并停用。
             foreach (IRuntimeModule module in modules)
-                module.Update();
+            {
+                if (failedModules.Contains(module))
+                    continue;
+
+                try
+                {
+                    module.Update();
+                }
+                catch (Exception exception)
+                {
+                    failedModules.Add(module);
+                    Log.LogError($"[SMA] module update failed and was disabled: {module.GetType().Name}: {exception}");
+                }
+            }
         }
 
         internal void SceneLoaded(int buildIndex, string sceneName)
