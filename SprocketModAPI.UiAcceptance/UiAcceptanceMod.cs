@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using Il2CppInterop.Runtime.Attributes;
 using SprocketModAPI;
 using UnityEngine;
 using UnityEngine.UI;
@@ -320,6 +321,8 @@ namespace SprocketModAPI.UiAcceptance
         {
         }
 
+        // 带托管参数的成员注册不进 il2cpp 域，只从托管侧调用。
+        [HideFromIl2Cpp]
         public void Configure(UiAcceptanceMod mod) => host = mod;
 
         private void Update()
