@@ -767,7 +767,7 @@ namespace SprocketModAPI
             scroll.horizontal = false;
             scroll.vertical = true;
             scroll.movementType = ScrollRect.MovementType.Clamped;
-            scroll.scrollSensitivity = 15f;
+            scroll.scrollSensitivity = 2f;
 
             GameObject viewport = CreateImageNode(panel.transform, "Viewport", TableBackgroundColor, true);
             RectTransform viewportRect = viewport.GetComponent<RectTransform>();

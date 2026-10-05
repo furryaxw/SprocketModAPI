@@ -301,7 +301,7 @@ namespace SprocketModAPI
             uiScroll.horizontal = false;
             uiScroll.vertical = true;
             uiScroll.movementType = ScrollRect.MovementType.Clamped;
-            uiScroll.scrollSensitivity = 0.2f;
+            uiScroll.scrollSensitivity = 2f;
 
             GameObject header = CreateImageNode(panel.transform, "Header Row", HeaderSurfaceColor, false);
             RectTransform headerRect = header.GetComponent<RectTransform>();
