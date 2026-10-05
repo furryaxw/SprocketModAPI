@@ -1,5 +1,7 @@
 # 按键注册 API
 
+**中文** | [English](keybindings-api.en.md)
+
 通过 `SprocketApi.TryGetService` 获取 `IInputService`，用一个稳定的 `ActionId` 注册动作。
 
 键位的稳定 ID 是 `<ModId>:<ActionId>`，ModID 由 API 从**调用方程序集**的 `Sprocket.Mod.Id` 推断；没有声明该元数据就退化为程序集名。发布后不要修改 `Sprocket.Mod.Id` 与 `ActionId`，否则用户保存的绑定无法自动关联。显式传 `ModId` 仍然有效（覆盖路径）。

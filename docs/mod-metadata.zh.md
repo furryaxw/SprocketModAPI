@@ -1,5 +1,7 @@
 # Mod 元数据契约 v1（DLL 内嵌元数据）
 
+**中文** | [English](mod-metadata.en.md)
+
 游戏内 Mod 菜单、`sprocket-mod-system` 管理器和 Registry 需要把**同一个模组**认成同一个东西。
 本文件定义三方的公共字段来源，**不依赖联网**。
 
@@ -7,7 +9,7 @@
 
 1. **本地优先**：DLL 内嵌元数据是权威来源；Registry 只补充展示信息（描述、分类、仓库）。
 2. **只读静态元数据**：读取方不得 `Assembly.Load`、不得执行第三方代码、**永不执行 DLL 代码**（管理器侧硬约束见
-   `sprocket-mod-spec.md` 的「DLL 分类」）。
+   `sprocket-mod-spec.zh.md` 的「DLL 分类」）。
 3. **缺失可降级**：任何字段缺失都不得让模组无法加载，也不得让菜单或管理器报错。
 
 ## 字段来源与优先级

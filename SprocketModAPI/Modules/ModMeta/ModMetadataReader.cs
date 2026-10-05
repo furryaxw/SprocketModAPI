@@ -6,7 +6,7 @@ namespace SprocketModAPI
 {
     // 把 `LoadedModDescriptor` 合并为 `ModMetadata`。
     // 纯函数式实现：不触碰 Unity、BepInEx 或文件系统，可在离线合约测试中直接覆盖。
-    // 优先级见 `docs/mod-metadata.md`；任何缺失都降级为空值，不抛异常。
+    // 优先级见 `docs/mod-metadata.en.md`；任何缺失都降级为空值，不抛异常。
     internal static class ModMetadataReader
     {
         private const string KeyPrefix = "Sprocket.Mod.";

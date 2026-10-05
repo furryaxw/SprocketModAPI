@@ -1,5 +1,7 @@
 # UI 注册 API
 
+**中文** | [English](ui-api.en.md)
+
 获取 `IUiService` 后，为模组创建 owner scope，并在模组卸载时释放该 scope。
 
 ```csharp

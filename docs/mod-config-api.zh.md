@@ -1,5 +1,7 @@
 # 模组配置 API
 
+**中文** | [English](mod-config-api.en.md)
+
 声明式配置：模组只声明「有哪些设置项」，控件渲染、持久化、变更通知由 API 负责。
 游戏内 Mod 菜单通过同一份声明渲染配置页，因此**模组不需要自己写 UI**。
 
@@ -54,7 +56,7 @@ config.ResetToDefault("strength");
 
 - 写入成功立即持久化，并发布 `IModConfigService.Changed`（参数只含 `ModId` 与 `Key`）。
 - 写入相同值**不产生事件、也不写文件**。
-- 键位相关设置请使用 [按键注册](keybindings-api.md) 的 `IInputService`，v1 配置控件不含键位控件。
+- 键位相关设置请使用 [按键注册](keybindings-api.zh.md) 的 `IInputService`，v1 配置控件不含键位控件。
 
 ## 条目类型
 

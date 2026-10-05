@@ -24,7 +24,7 @@ namespace SprocketModAPI
         internal static ModToggleResult Failed(string message) => new(false, "", message, false);
     }
 
-    // 启用/禁用约定（见 `docs/mod-metadata.md`）：把 `<Name>.dll` 改名为
+    // 启用/禁用约定（见 `docs/mod-metadata.en.md`）：把 `<Name>.dll` 改名为
     // `<Name>.dll.disable`。MelonLoader 只加载 `*.dll`，所以下一轮启动才会生效。
     // 本类只做文件改名，不认识编译器、不加载程序集。
     internal static class ModFileToggle

@@ -1,5 +1,7 @@
 # 键位管理
 
+**中文** | [English](keybindings.en.md)
+
 ## 管理窗口
 
 API 监听 `Settings Menu/Content/Content` 的子节点变化；发现 `Keymapping` 后，再监听该页面的启用和禁用事件。只有 Keymapping 页面激活时才显示 `MOD KEYBINDINGS` 入口。入口左边界通过 `Action buttons` 的 RectTransform 事件保持对齐，不使用逐帧层级轮询。

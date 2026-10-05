@@ -10,7 +10,7 @@ namespace SprocketModAPI
         Plugin = 2
     }
 
-    // 单个模组的只读元数据快照。来源与优先级见 `docs/mod-metadata.md`：
+    // 单个模组的只读元数据快照。来源与优先级见 `docs/mod-metadata.en.md`：
     // `Sprocket.Mod.*` 程序集元数据优先，其次 `BepInPlugin`，最后退化为程序集名或文件名；
     // 缺失字段一律为空，不抛异常。
     public sealed class ModMetadata
