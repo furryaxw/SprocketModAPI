@@ -27,3 +27,5 @@
   `ModKind` 只剩 `Unknown` 与 `Plugin`。引用这些成员的模组需要重新编译。
 - **宿主要求变化**：MelonLoader 版模组不能在这个宿主下加载；配套模组都在 BepInEx 6 下重新构建。
 - 支持环境：Sprocket `0.2.55.5`、BepInEx `6.0.0-be.788`（IL2CPP）、Unity `6000.3.21f1`、Windows x64。
+
+<!-- sp-compat {"hamish.sprocket": "0.2.55.5", "bepinex.bepinex": "6.0.0-be.788"} -->
