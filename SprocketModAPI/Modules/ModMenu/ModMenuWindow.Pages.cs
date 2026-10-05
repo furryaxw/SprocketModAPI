@@ -711,7 +711,9 @@ namespace SprocketModAPI
 
         private void ToggleEnabled(ModMenuRow row)
         {
-            string path = row.Location;
+            // 已加载插件的元数据位置是加载时的 `.dll` 路径，文件可能已被改成 `.dll.disable`；
+            // 开关必须按磁盘上的实际路径操作，否则启用会因为拿到 `.dll` 而被拒绝。
+            string path = ModFileToggle.ActualPathFor(row.Location);
             if (string.IsNullOrEmpty(path))
             {
                 SetStatus("This mod has no file on disk to toggle.");

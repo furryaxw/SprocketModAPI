@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
@@ -63,6 +64,7 @@ namespace SprocketModAPI
         private ServiceRegistry? services;
         private RuntimeModuleContext? context;
         private IRuntimeModule[] modules = Array.Empty<IRuntimeModule>();
+        private bool tickLogged;
 
         public override void Load()
         {
@@ -96,18 +98,26 @@ namespace SprocketModAPI
 
         internal void Tick()
         {
+            if (!tickLogged)
+            {
+                tickLogged = true;
+                Log.LogInfo($"[SMA] driver tick running modules={modules.Length}");
+            }
+
             foreach (IRuntimeModule module in modules)
                 module.Update();
         }
 
         internal void SceneLoaded(int buildIndex, string sceneName)
         {
+            Log.LogInfo($"[SMA] scene-loaded name={sceneName} buildIndex={buildIndex}");
             foreach (IRuntimeModule module in modules)
                 module.SceneLoaded(buildIndex, sceneName);
         }
 
         internal void SceneUnloaded(int buildIndex, string sceneName)
         {
+            Log.LogInfo($"[SMA] scene-unloaded name={sceneName} buildIndex={buildIndex}");
             foreach (IRuntimeModule module in modules)
                 module.SceneUnloaded(buildIndex, sceneName);
         }
@@ -129,14 +139,18 @@ namespace SprocketModAPI
         }
     }
 
-    // BepInEx 没有每帧与场景回调；这个注入组件驱动模块的 Update，并在活动场景句柄变化时
-    // 依次发布旧场景的卸载与新场景的加载。
+    // BepInEx 没有每帧与场景回调；这个注入组件驱动模块的 Update，并把已加载场景集合的差集
+    // 报成加载/卸载事件。Sprocket 用加法加载切换设置、暂停等界面，只看活动场景会漏掉它们。
     internal sealed class ApiDriver : MonoBehaviour
     {
+        private static readonly BepInEx.Logging.ManualLogSource DriverLog =
+            BepInEx.Logging.Logger.CreateLogSource("Sprocket Mod API");
+
+        private readonly Dictionary<int, LoadedScene> loadedScenes = new();
+        private readonly List<int> staleScenes = new();
+        private bool sceneProbeLogged;
+
         private ApiMod? host;
-        private int lastHandle = int.MinValue;
-        private int lastBuildIndex = -1;
-        private string lastName = "";
 
         public ApiDriver(IntPtr ptr) : base(ptr)
         {
@@ -153,18 +167,72 @@ namespace SprocketModAPI
                 return;
 
             current.Tick();
+            SyncScenes(current);
+        }
 
-            Scene active = SceneManager.GetActiveScene();
-            if (active.handle == lastHandle)
-                return;
+        private void SyncScenes(ApiMod current)
+        {
+            if (!sceneProbeLogged)
+            {
+                sceneProbeLogged = true;
+                DriverLog.LogInfo($"[SMA] scene probe sceneCount={SceneManager.sceneCount}");
+            }
 
-            if (lastHandle != int.MinValue)
-                current.SceneUnloaded(lastBuildIndex, lastName);
+            staleScenes.Clear();
+            foreach (KeyValuePair<int, LoadedScene> pair in loadedScenes)
+            {
+                if (!IsLoaded(pair.Key))
+                    staleScenes.Add(pair.Key);
+            }
 
-            lastHandle = active.handle;
-            lastBuildIndex = active.buildIndex;
-            lastName = active.name;
-            current.SceneLoaded(lastBuildIndex, lastName);
+            foreach (int handle in staleScenes)
+            {
+                LoadedScene scene = loadedScenes[handle];
+                loadedScenes.Remove(handle);
+                current.SceneUnloaded(scene.BuildIndex, scene.Name);
+            }
+
+            int count = SceneManager.sceneCount;
+            for (int index = 0; index < count; index++)
+            {
+                Scene scene = SceneManager.GetSceneAt(index);
+                if (!scene.IsValid() || !scene.isLoaded)
+                    continue;
+
+                int handle = scene.handle;
+                if (loadedScenes.ContainsKey(handle))
+                    continue;
+
+                string name = scene.name;
+                int buildIndex = scene.buildIndex;
+                loadedScenes[handle] = new LoadedScene(buildIndex, name);
+                current.SceneLoaded(buildIndex, name);
+            }
+        }
+
+        private static bool IsLoaded(int handle)
+        {
+            int count = SceneManager.sceneCount;
+            for (int index = 0; index < count; index++)
+            {
+                Scene scene = SceneManager.GetSceneAt(index);
+                if (scene.IsValid() && scene.isLoaded && scene.handle == handle)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private readonly struct LoadedScene
+        {
+            internal LoadedScene(int buildIndex, string name)
+            {
+                BuildIndex = buildIndex;
+                Name = name;
+            }
+
+            internal int BuildIndex { get; }
+            internal string Name { get; }
         }
     }
 }

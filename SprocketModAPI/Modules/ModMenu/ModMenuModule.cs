@@ -41,6 +41,7 @@ namespace SprocketModAPI
         private ModMenuSettingsEntry? entry;
         private IDisposable? serviceRegistration;
         private IInputActionHandle? toggleAction;
+        private bool updateLogged;
 
         public void Initialize(RuntimeModuleContext context)
         {
@@ -99,6 +100,12 @@ namespace SprocketModAPI
 
         public void Update()
         {
+            if (!updateLogged)
+            {
+                updateLogged = true;
+                info?.Invoke($"[SMA-MENU] update running window={window != null} entry={entry != null} metadata={service != null}");
+            }
+
             window?.Update();
             entry?.Update();
         }
