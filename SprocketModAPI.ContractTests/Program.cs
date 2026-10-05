@@ -180,8 +180,8 @@ internal static class Program
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
         Check(ui.Contains("uiScroll.scrollSensitivity = 2f"), "keybinding list scroll sensitivity is set");
-        Check(readme.Contains("当前发行版本为 `0.3.0`，公共 API 版本为 `2.0`"), "README release and API versions are current");
-        Check(releaseNotes.StartsWith("# Sprocket Mod API v0.3.0", StringComparison.Ordinal), "release notes version is current");
+        Check(readme.Contains("当前发行版本为 `1.0.0`，公共 API 版本为 `2.0`"), "README release and API versions are current");
+        Check(releaseNotes.StartsWith("# Sprocket Mod API v1.0.0", StringComparison.Ordinal), "release notes version is current");
 
         int headerPanel = ui.IndexOf("CreateHeaderPanel(uiWindow.transform)", StringComparison.Ordinal);
         int searchPanel = ui.IndexOf("CreateSearchPanel(uiWindow.transform)", StringComparison.Ordinal);
