@@ -27,7 +27,9 @@ On the `Sprocket Mod API` configuration page of the in-game Mod menu (the `MODS`
 
 ## Native Menu Buttons
 
-`CreateMenuButtonAsync` creates a Sprocket `Tab` through `MenuPanel.Button`. The pooled object is managed by the game and follows the native main-menu lifecycle.
+`CreateMenuButtonAsync` registers a native menu button: after it returns an `IUiMenuButtonHandle`, the service adds a Sprocket `Tab` to the native `MenuPanel`'s button pool through `MenuPanel.Button` once the panel has drawn its buttons and the anchor named by `BelowNativeButtonText` exists. The button belongs to the game's object pool and follows the native main-menu lifecycle; after each screen switch the native menu redecorates the panel, and the service recreates that one button for the same handle.
+
+`Parent` and `BelowNativeButtonText` need at least one of the two. `Parent` is only a host check: when set it must sit under an active Canvas with a `GraphicRaycaster`, while the button itself is created in the native `MenuPanel`'s button pool and positioned by the native layout.
 
 `UiMenuButtonDefinition` additionally supports `Selected` and `BelowNativeButtonText`. The creation result's `IUiMenuButtonHandle` reads and writes `Enabled`, `Text`, and `Selected`, and releases the mod's ownership through `Dispose()`.
 
@@ -55,6 +57,6 @@ var result = await scope.CreateMainMenuButtonAsync(new UiMenuButtonDefinition
 });
 ```
 
-When the native template is unavailable or the specified anchor cannot be found, the interface returns a structured failure instead of silently placing the button in the wrong position. Menu buttons can only be created when the confirmed Sprocket `Tab` and `MenuPanel` are available. All UI callbacks run on the Unity main thread.
+While the anchor has not appeared yet, the button stays registered instead of landing at the end of the native list (which would be "silently placed in the wrong position"). `SceneUnavailable` is returned when the main-menu scene is not loaded. All UI callbacks run on the Unity main thread.
 
-Common `UiFailureCode` values include `CapabilityUnavailable`, `TemplateNotFound`, `InvalidParent`, `OwnerDisposed`, `Cancelled`, and `CreationFailed`. Menu buttons belong to a game object pool and should not be passed to Unity `Destroy` directly by a mod.
+Common `UiFailureCode` values include `InvalidParent`, `SceneUnavailable`, `OwnerDisposed`, `Cancelled`, and `CreationFailed`. Menu buttons belong to a game object pool and should not be passed to Unity `Destroy` directly by a mod.
