@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-`SprocketModAPI/` contains the net6 BepInEx IL2CPP plugin assembly. `Core/` owns only the public entry point, service registry, and common runtime-module lifecycle. `Modules/Keybindings/` owns all keybinding contracts, routing, persistence, management UI, and Settings observers. Future modules belong in their own `Modules/<Name>/` directory, may depend on Core, and must not depend on another module's internals. No game-native UI module exists yet; do not describe hand-built Unity UGUI as a Sprocket UI component service. `SprocketModAPI.ContractTests/` is a console-based offline contract suite. User documentation belongs in `docs/`, while release-facing changes belong in `README.md` and `RELEASE_NOTES.md`. `TODO.md` is a local, Git-ignored planning file and must not be staged.
+`SprocketModAPI/` contains the net6 BepInEx IL2CPP plugin assembly. `Core/` owns only the public entry point, service registry, and common runtime-module lifecycle. `Modules/Keybindings/` owns all keybinding contracts, routing, persistence, management UI, and Settings observers. Future modules belong in their own `Modules/<Name>/` directory, may depend on Core, and must not depend on another module's internals. `Modules/Ui/` owns the game-native UI capability (main-menu buttons taken from the game's `MenuPanel` button pool); the hand-built UGUI mod menu lives in `Modules/ModMenu/` and is not a Sprocket UI component service. `SprocketModAPI.ContractTests/` is a console-based offline contract suite. User documentation belongs in `docs/`, while release-facing changes belong in `README.md` and `RELEASE_NOTES.md`. `TODO.md` is a local, Git-ignored planning file and must not be staged.
 
 ## Build, Test, and Development Commands
 
@@ -30,7 +30,7 @@ Add contract checks for every public API or persistence change. Name checks by o
 
 ## Commit & Pull Request Guidelines
 
-The current history uses concise release subjects (`Release v0.1.0`). Use short imperative subjects for normal work, for example `Fix focus rearm state`, and keep each commit logically focused. Pull requests should explain behavior and compatibility impact, list exact validation commands, and distinguish offline checks from in-game results. Include screenshots for UI changes and note the tested game, MelonLoader, and API versions. Never commit game binaries, generated `bin/` or `obj/` output, logs, or deployed DLLs.
+The current history uses concise release subjects (`Release v0.1.0`). Use short imperative subjects for normal work, for example `Fix focus rearm state`, and keep each commit logically focused. Pull requests should explain behavior and compatibility impact, list exact validation commands, and distinguish offline checks from in-game results. Include screenshots for UI changes and note the tested game, BepInEx, and API versions. Never commit game binaries, generated `bin/` or `obj/` output, logs, or deployed DLLs.
 
 ## Text rules
 

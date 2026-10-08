@@ -56,11 +56,11 @@ namespace SprocketModAPI
         }
     }
 
-    [BepInPlugin(PluginGuid, "Sprocket Mod API", "1.0.0")]
+    [BepInPlugin(PluginGuid, "Sprocket Mod API", "1.1.0")]
     public sealed class ApiMod : BasePlugin
     {
         internal const string PluginGuid = "furryaxw.sprocket-mod-api";
-        private const string ModVersion = "1.0.0";
+        private const string ModVersion = "1.1.0";
 
         private ServiceRegistry? services;
         private RuntimeModuleContext? context;
