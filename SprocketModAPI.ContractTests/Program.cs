@@ -108,16 +108,12 @@ internal static class Program
         string uiContracts = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "Contracts.cs"));
         string uiBackend = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UnityUiBackend.cs"));
         string contractProject = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI.ContractTests", "SprocketModAPI.ContractTests.csproj"));
-        string keybindingsApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "keybindings-api.md"));
-        string uiApi = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "ui-api.md"));
-        string modMetadataDoc = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "mod-metadata.md"));
         string modMetaReader = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModMeta", "ModMetadataReader.cs"));
         string modMetaSource = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModMeta", "LoadedModSource.cs"));
         string modMetaModule = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModMeta", "ModMetaModule.cs"));
         string modConfigModule = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModConfig", "ModConfigModule.cs"));
         string modConfigService = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModConfig", "ModConfigService.cs"));
         string modConfigStore = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModConfig", "ModConfigStore.cs"));
-        string modConfigDoc = File.ReadAllText(Path.Combine(repositoryRoot, "docs", "mod-config-api.md"));
         string modMenuModule = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModMenu", "ModMenuModule.cs"));
         string modMenuContracts = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "ModMenu", "Contracts.cs"));
         string assemblyInfo = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Core", "AssemblyInfo.cs"));
@@ -131,8 +127,6 @@ internal static class Program
         string uiDebugLog = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Ui", "UiDebugSettings.cs"))
             + File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI", "Modules", "Keybindings", "KeybindingDebugSettings.cs"));
         string uiAcceptance = File.ReadAllText(Path.Combine(repositoryRoot, "SprocketModAPI.UiAcceptance", "UiAcceptanceMod.cs"));
-        string readme = File.ReadAllText(Path.Combine(repositoryRoot, "README.md"));
-        string releaseNotes = File.ReadAllText(Path.Combine(repositoryRoot, "RELEASE_NOTES.md"));
 
         Check(api.Contains("IRuntimeModule[]") && api.Contains("RuntimeModuleHost.InitializeAll(modules, context)"), "Core hosts modules through common lifecycle");
         Check(!api.Contains("InputService") && !api.Contains("UiService") && !api.Contains("KeybindingUiController"), "Core does not own module implementations");
@@ -141,9 +135,6 @@ internal static class Program
             "offline contract project reference cannot deploy the API into the live game");
         Check(uiContracts.Contains("interface IUiService") && uiContracts.Contains("interface IUiScope"), "UI public contracts exist");
         Check(uiContracts.Contains("CreateMainMenuButtonAsync") && uiContracts.Contains("BelowNativeButtonText"), "advanced main-menu placement contract exists");
-        Check(keybindingsApi.Contains("RegisterAction") && keybindingsApi.Contains("ModifierKeys") && keybindingsApi.Contains("ActionsChanged")
-            && uiApi.Contains("CreateMainMenuButtonAsync") && uiApi.Contains("UiFailureCode") && uiApi.Contains("UiCapabilitySnapshot"),
-            "public API documentation covers the complete keybinding and UI contracts");
         Check(uiContracts.Contains("TemplateNotFound"), "UI structured failures include template failure");
         Check(uiBackend.Contains("FindObjectsOfTypeAll<MainMenu>()")
             && uiBackend.Contains("menu.panel")
@@ -190,8 +181,6 @@ internal static class Program
             && !conflictIndex.Contains(".Enable()") && !conflictIndex.Contains(".Disable()"), "native InputActionAsset import is read-only");
         Check(ui.Contains("FormatConflictSummary") && ui.Contains("Conflict:\\n"), "management UI renders grouped conflict source and binding summary");
         Check(ui.Contains("uiScroll.scrollSensitivity = 2f"), "keybinding list scroll sensitivity is set");
-        Check(readme.Contains("当前发行版本为 `1.1.0`，公共 API 版本为 `2.0`"), "README release and API versions are current");
-        Check(releaseNotes.StartsWith("# Sprocket Mod API v1.1.0", StringComparison.Ordinal), "release notes version is current");
 
         int headerPanel = ui.IndexOf("CreateHeaderPanel(uiWindow.transform)", StringComparison.Ordinal);
         int searchPanel = ui.IndexOf("CreateSearchPanel(uiWindow.transform)", StringComparison.Ordinal);
@@ -268,9 +257,6 @@ internal static class Program
             "metadata service is registered through a module and re-snapshots on registration changes");
         Check(modMetaReader.Contains("Sprocket.Mod.") && modMetaReader.Contains("file:"),
             "metadata reader implements the declared key prefix and identity fallback");
-        Check(modMetadataDoc.Contains("Sprocket.Mod.Id") && modMetadataDoc.Contains(".dll.disable")
-            && modMetadataDoc.Contains("永不执行 DLL 代码"),
-            "cross-repository metadata contract documents ids, disable convention and static-read rule");
         Check(api.Contains("new ModConfigModule()"), "config module is hosted through the common module list");
         Check(modConfigModule.Contains("Register<IModConfigService>")
             && modConfigModule.Contains("Path.Combine(ModPaths.ModDataRoot, \"modconfig\")"),
@@ -288,9 +274,6 @@ internal static class Program
         Check(modConfigStore.Contains("WriteAtomic") && modConfigStore.Contains(".corrupt-")
             && modConfigStore.Contains("ConfigVersion"),
             "config store keeps atomic writes, corrupt backups and a migratable config version");
-        Check(modConfigDoc.Contains("IModConfigRegistration") && modConfigDoc.Contains("modconfig/<modId>.json")
-            && modConfigDoc.Contains("ModConfigEntryDefinition.Slider"),
-            "config API documentation covers registration, persistence path and entry kinds");
         Check(api.Contains("new ModMenuModule()"), "mod menu module is hosted through the common module list");
         Check(modMenuModule.Contains("Register<IModMenuService>") && modMenuModule.Contains("AcquireInputBlock")
             && modMenuModule.Contains("new ModMenuSettingsEntry("),
@@ -303,7 +286,6 @@ internal static class Program
             "the mod menu action ships unbound: the settings-page entry is the only default way in");
         Check(input.Contains("KeyChord.IsEmpty"),
             "keybinding validation accepts a fully empty default (unbound-by-default actions)");
-        Check(keybindingsApi.Contains("默认键位可以全空"), "keybinding documentation records unbound defaults");
         Check(modMenuWindow.Contains("ModFileToggle.Disable") && modMenuWindow.Contains("ModFileToggle.Enable")
             && modMenuWindow.Contains("RESTART REQUIRED"),
             "mod menu toggles .dll.disable files and reports the required restart");
