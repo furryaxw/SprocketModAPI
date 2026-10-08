@@ -10,6 +10,7 @@ internal static class Program
         CheckPublicBehavior();
         CheckServiceRegistryBehavior();
         RuntimeModuleHostTests.Run();
+        ModRuntimeHostTests.Run();
         KeybindingStoreTests.Run();
         BindingConflictIndexTests.Run();
         BindingNormalizationTests.Run();

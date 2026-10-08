@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Unity.IL2CPP;
+using BepInEx.Unity.IL2CPP.Utils;
 using Il2CppInterop.Runtime.Attributes;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -63,6 +64,7 @@ namespace SprocketModAPI
 
         private ServiceRegistry? services;
         private RuntimeModuleContext? context;
+        private ModRuntimeHost? runtimeHost;
         private IRuntimeModule[] modules = Array.Empty<IRuntimeModule>();
         private readonly HashSet<IRuntimeModule> failedModules = new();
         private bool tickLogged;
@@ -87,7 +89,15 @@ namespace SprocketModAPI
             if (failures != 0)
                 Log.LogWarning($"Sprocket Mod API {ModVersion} initialized with {failures} module(s) unavailable; the remaining services are still registered.");
 
-            AddComponent<ApiDriver>().Configure(this);
+            runtimeHost = new ModRuntimeHost(Log.LogError);
+            ApiDriver driver = AddComponent<ApiDriver>();
+            driver.Configure(this);
+            services.Register<IModRuntimeService>(new ModRuntimeService(
+                runtimeHost,
+                driver.StartManagedCoroutine,
+                driver.StopManagedCoroutine));
+            services.Register<IModLogService>(new ModLogService());
+
             Log.LogInfo($"Sprocket Mod API {ModVersion} initialized (API {SprocketApi.ApiVersion}).");
         }
 
@@ -104,6 +114,8 @@ namespace SprocketModAPI
                 tickLogged = true;
                 Log.LogInfo($"[SMA] driver tick running modules={modules.Length}");
             }
+
+            runtimeHost?.Tick();
 
             // 一个模块抛异常不能拖垮其余模块，也不能每帧刷屏：失败的模块只报一次并停用。
             foreach (IRuntimeModule module in modules)
@@ -139,6 +151,8 @@ namespace SprocketModAPI
 
         private void ShutdownModules()
         {
+            runtimeHost?.Dispose();
+            runtimeHost = null;
             if (context != null)
                 RuntimeModuleHost.ShutdownAll(modules, context);
             modules = Array.Empty<IRuntimeModule>();
@@ -152,6 +166,12 @@ namespace SprocketModAPI
                 services = null;
             }
         }
+
+        internal void DrawRuntimeGui() => runtimeHost?.Draw();
+
+        internal void LateTickRuntime() => runtimeHost?.LateTick();
+
+        internal void ShutdownRuntime() => runtimeHost?.Shutdown();
     }
 
     // BepInEx 没有每帧与场景回调；这个注入组件驱动模块的 Update，并把已加载场景集合的差集
@@ -174,6 +194,31 @@ namespace SprocketModAPI
         // 带托管参数的成员注册不进 il2cpp 域，只从托管侧调用。
         [HideFromIl2Cpp]
         public void Configure(ApiMod mod) => host = mod;
+
+        // 登记在 IModRuntimeService 上的协程跑在这个组件上，所以它们随进程存活。
+        [HideFromIl2Cpp]
+        internal object? StartManagedCoroutine(System.Collections.IEnumerator routine)
+            => BepInEx.Unity.IL2CPP.Utils.MonoBehaviourExtensions.StartCoroutine(this, routine);
+
+        [HideFromIl2Cpp]
+        internal void StopManagedCoroutine(object? handle)
+        {
+            if (handle is Coroutine coroutine)
+                StopCoroutine(coroutine);
+        }
+
+        private void OnGUI()
+        {
+            ApiMod? current = host;
+            if (current == null)
+                return;
+
+            current.DrawRuntimeGui();
+        }
+
+        private void OnApplicationQuit() => host?.ShutdownRuntime();
+
+        private void LateUpdate() => host?.LateTickRuntime();
 
         private void Update()
         {
