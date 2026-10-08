@@ -9,6 +9,7 @@ internal static class UiServiceTests
     {
         CheckStatusContracts();
         CheckDebugConfiguration();
+        CheckMenuButtonOwnership();
         var backend = new FakeUiBackend();
         var scope = new UiScopeCore("test-mod", backend);
         UnityEngine.Transform? parent = null;
@@ -77,6 +78,21 @@ internal static class UiServiceTests
         sceneBackend.SceneUnloaded();
         Check(sceneResult.Value!.IsDisposed, "scene unload releases handles");
         sceneScope.Dispose();
+    }
+
+    // 「原生按钮还归本句柄」的判据：读错它就会在同一轮里反复补建按钮。
+    private static void CheckMenuButtonOwnership()
+    {
+        Check(MenuButtonOwnership.IsOwned("MultiPlayer", "MultiPlayer", presentInActivePool: true),
+            "a tab still in the native pool belongs to its handle");
+        Check(!MenuButtonOwnership.IsOwned("MultiPlayer", "Custom Battle", presentInActivePool: true),
+            "a pooled tab the native UI relabelled for another button does not belong to the handle");
+        Check(!MenuButtonOwnership.IsOwned("MultiPlayer", "MultiPlayer", presentInActivePool: false),
+            "a tab the native menu returned to the pool is created once more");
+        Check(!MenuButtonOwnership.IsOwned("MultiPlayer", "", presentInActivePool: false),
+            "a destroyed tab is never owned");
+        Check(!MenuButtonOwnership.IsOwned("MultiPlayer", "mult iplayer", presentInActivePool: true),
+            "the label check is ordinal");
     }
 
     private static void CheckStatusContracts()

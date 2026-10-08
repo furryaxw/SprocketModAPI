@@ -13,6 +13,15 @@ namespace SprocketModAPI
         void SceneUnloaded();
     }
 
+    // 「原生按钮是否仍归本句柄」的判据。原生 `MenuPanel.Button` 从 `buttonPool.Get()` 取按钮，
+    // 切屏时 `MainMenu.SetActiveMenu` 先 `ReturnAllToPool` 再重画，所以池的 active 列表就是
+    // 「面板现在有哪些按钮」的唯一真值；光看引用相等不够（池会复用元素给别的按钮）。
+    internal static class MenuButtonOwnership
+    {
+        internal static bool IsOwned(string expectedText, string nativeLabel, bool presentInActivePool)
+            => string.Equals(expectedText, nativeLabel ?? "", StringComparison.Ordinal) && presentInActivePool;
+    }
+
     internal sealed class UiScopeCore : IUiScope
     {
         private readonly string ownerId;

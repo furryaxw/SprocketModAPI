@@ -71,6 +71,7 @@ namespace SprocketModAPI
 
     public sealed class UiMenuButtonDefinition
     {
+        // Parent 与 BelowNativeButtonText 至少给一个：前者只做宿主 Canvas 校验，后者指定按钮落在哪个原生按钮下方。
         public Transform? Parent { get; init; }
         public string Text { get; init; } = "";
         public bool Enabled { get; init; } = true;

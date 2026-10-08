@@ -27,7 +27,9 @@ var scope = ui.CreateScope(new UiOwnerDefinition { ModId = "example.example-mod"
 
 ## 原生菜单按钮
 
-`CreateMenuButtonAsync` 通过 `MenuPanel.Button` 创建 Sprocket `Tab`。池对象由游戏管理，并跟随原生主菜单生命周期。
+`CreateMenuButtonAsync` 登记一个原生菜单按钮：返回 `IUiMenuButtonHandle` 之后，服务在原生 `MenuPanel` 画出按钮、`BelowNativeButtonText` 指定的锚点就位时，才通过 `MenuPanel.Button` 往它的按钮池里加一个 Sprocket `Tab`。按钮属于游戏的对象池，跟随原生主菜单生命周期；每次切屏原生重画后，服务为同一个句柄重建这一个按钮。
+
+`Parent` 与 `BelowNativeButtonText` 至少要给一个。`Parent` 只做宿主校验：设置时必须位于带 `GraphicRaycaster` 的活动 Canvas 下；按钮本身由原生 `MenuPanel` 的按钮池创建，位置由原生布局决定。
 
 `UiMenuButtonDefinition` 另外支持 `Selected` 和 `BelowNativeButtonText`。创建结果的 `IUiMenuButtonHandle` 可读写 `Enabled`、`Text`、`Selected`，并通过 `Dispose()` 释放模组所有权。
 
@@ -55,6 +57,6 @@ var result = await scope.CreateMainMenuButtonAsync(new UiMenuButtonDefinition
 });
 ```
 
-原生模板不可用或找不到指定锚点时，接口会返回结构化失败，不会把按钮静默放到错误位置。只有已确认的 Sprocket `Tab` 和 `MenuPanel` 可用时才能创建菜单按钮。所有 UI 回调都在 Unity 主线程执行。
+锚点还没出现时按钮只保持登记状态，不会落到原生列表末尾（"静默放到错误位置"）。主菜单场景未加载时返回 `SceneUnavailable`。所有 UI 回调都在 Unity 主线程执行。
 
-常见 `UiFailureCode` 包括 `CapabilityUnavailable`、`TemplateNotFound`、`InvalidParent`、`OwnerDisposed`、`Cancelled` 和 `CreationFailed`。菜单按钮属于游戏对象池，不应由模组直接调用 Unity `Destroy`。
+常见 `UiFailureCode` 包括 `InvalidParent`、`SceneUnavailable`、`OwnerDisposed`、`Cancelled` 和 `CreationFailed`。菜单按钮属于游戏对象池，不应由模组直接调用 Unity `Destroy`。

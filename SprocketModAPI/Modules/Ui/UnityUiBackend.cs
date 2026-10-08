@@ -2,16 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
-using Sprocket.UI;
-using Sprocket.Selection;
 using Sprocket;
-using Sprocket.SceneManagement;
+using Sprocket.Selection;
+using Sprocket.UI;
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace SprocketModAPI
 {
@@ -121,8 +119,8 @@ namespace SprocketModAPI
         {
             if (disposed)
                 return;
-            // FIX: Application shutdown can destroy the native MainMenu before
-            // Melon deinitialization. A final Update then dereferenced that
+            // FIX: Application shutdown can destroy the native MainMenu before BepInEx
+            // unloads the plugin. A final Update then dereferenced that
             // dead IL2CPP Behaviour; close the service before native cleanup.
             disposed = true;
             foreach (UiScopeCore scope in scopes)
@@ -140,25 +138,35 @@ namespace SprocketModAPI
 
     internal sealed class UnityUiBackend : IUiBackend
     {
-        private static readonly Version SupportedGameVersion = new(0, 2, 53, 2);
+        // 能力探测与创建都针对这个版本的原生主菜单做的：换版本要重新核对 MenuPanel 字段与方法。
+        private static readonly Version SupportedGameVersion = new(0, 2, 55, 5);
+
+        // 原生切屏时由 `MainMenu.SetActiveMenu` 的协程重画 `MenuPanel`（先清空再补回原生按钮）。
+        // 重画期间建出来的按钮会被那次清空带走，所以观测到换屏后先等布局落定再补按钮。
+        private const int MenuSettleFrames = 2;
+
+        // 原生 `MenuPanel.Button` 无条件把入参挂到 `UnityEvent` 上，传 null 会在原生侧抛空引用。
+        private static readonly Action NoOpClick = () => { };
+
         private readonly UiDebugLog debug;
+        private readonly Action<string> warn;
         private readonly Action<string> error;
         private readonly List<IUiMenuButtonHandle> handles = new();
         private bool disposed;
-        private Tab? menuButtonTemplate;
-        private MenuPanel? menuPanel;
         private MainMenu? mainMenu;
-        private IntPtr observedMenuPointer;
-        private int menuTransitionFrames;
+        private MenuPanel? menuPanel;
+        private IntPtr observedScreenPointer;
+        private int settleFrames;
         private int menuGeneration;
         private string currentSceneName = "";
 
         internal UnityUiBackend(Action<string> warn, Action<string> error)
         {
+            this.warn = warn;
             this.error = error;
             debug = new UiDebugLog(ApiSelfSettings.Current, error);
+            menuGeneration++;
             Capabilities = new UiCapabilitySnapshot { GameVersion = SupportedGameVersion };
-            RefreshCapabilities();
         }
 
         public UiCapabilitySnapshot Capabilities { get; private set; }
@@ -200,163 +208,276 @@ namespace SprocketModAPI
         {
             if (disposed)
                 return;
-            if (!string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase))
-                return;
-            if (mainMenu == null)
+            MenuPanel? panel = EnsurePanel(allowSearch: IsMainMenuSceneLoaded() || menuPanel != null);
+            bool hasPool = panel != null && SafeButtonPool(panel) != null;
+            UiCapability available = hasPool ? UiCapability.MenuButton : UiCapability.None;
+
+            IntPtr screenPointer = SafePointer(mainMenu?.activeMenu);
+            if (screenPointer != observedScreenPointer)
             {
-                MainSceneRoot[] roots = Resources.FindObjectsOfTypeAll<MainSceneRoot>();
-                foreach (MainSceneRoot root in roots)
-                {
-                    if (root is MainMenu candidate && IsActiveAndEnabled(candidate))
-                    {
-                        mainMenu = candidate;
-                        break;
-                    }
-                }
-            }
-            MainMenuScreen? activeMenu = mainMenu?.activeMenu;
-            IntPtr activeMenuPointer = activeMenu?.Pointer ?? IntPtr.Zero;
-            if (activeMenuPointer != observedMenuPointer)
-            {
-                observedMenuPointer = activeMenuPointer;
+                observedScreenPointer = screenPointer;
                 menuGeneration++;
-                menuTransitionFrames = 2;
-                debug.Lifecycle($"menu-transition generation={menuGeneration} pointer=0x{activeMenuPointer.ToInt64():X} title={activeMenu?.Title ?? "<null>"}");
-                foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
-                    if (handle is UnityMenuButtonHandle nativeHandle)
-                    {
-                        nativeHandle.InvalidateForScene();
-                    }
-                PublishStatusIfChanged(false);
+                settleFrames = MenuSettleFrames;
+                debug.Lifecycle($"menu-transition generation={menuGeneration} pointer=0x{screenPointer.ToInt64():X}");
             }
-            if (menuTransitionFrames > 0)
+
+            bool settled = settleFrames == 0;
+            if (!settled)
+                settleFrames--;
+
+            // 原生按钮就位（`ActiveButtonCount > 0`）才算主菜单可供模组安放按钮：这时锚点与布局都已画好。
+            bool ready = settled && IsPanelReady(panel);
+            if (ready)
             {
-                menuTransitionFrames--;
-                debug.Lifecycle($"menu-blocked generation={menuGeneration} remaining={menuTransitionFrames}");
-                PublishStatusIfChanged(false);
-                return;
+                RegisterHandles(panel!);
             }
-            bool mainMenuScene = string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase);
-            bool mainMenuPanelReady = IsActiveAndEnabled(menuPanel) && mainMenuScene;
-            if (activeMenu == null && !mainMenuPanelReady)
+            else if (panel != null)
             {
-                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=no-active-menu scene={currentSceneName} panelActive={IsActiveAndEnabled(menuPanel)} panelVisible={IsVisible(menuPanel)}");
-                PublishStatusIfChanged(false);
-                return;
+                debug.EveryFrame($"menu-skip generation={menuGeneration} settled={settled} scene={currentSceneName} panelActive={IsActiveAndEnabled(panel)} panelVisible={IsVisible(panel)} buttons={SafeActiveButtonCount(panel)}");
             }
-            if (activeMenu != null && !string.Equals(activeMenu.Title, "Main Menu", StringComparison.OrdinalIgnoreCase))
-            {
-                debug.EveryFrame($"menu-skip generation={menuGeneration} reason=title title={activeMenu.Title}");
-                PublishStatusIfChanged(false);
-                return;
-            }
-            foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
-            {
-                if (handle is UnityMenuButtonHandle nativeHandle)
-                {
-                    if (nativeHandle.EnsureRegistered(menuPanel, menuGeneration, CreateRegisteredTab))
-                        debug.Lifecycle($"register generation={menuGeneration} text={nativeHandle.Text}");
-                    if (nativeHandle.ConsumeActivityChange(out bool activeSelf, out bool activeInHierarchy, out string path))
-                        // 这是**成功**注册后的活动状态诊断，不是失败：默认关闭的 UI trace，避免把正常
-                        // 生命周期当错误刷进 Latest.log（真正的失败仍然走 error/warn）。
-                        debug.Lifecycle($"native-registration text={nativeHandle.Text} activeSelf={activeSelf} activeInHierarchy={activeInHierarchy} path={path}");
-                }
-            }
-            PublishStatusIfChanged(true);
+
+            PublishStatusIfChanged(ready, available);
         }
 
-        internal void RefreshCapabilities()
+        // 主菜单是否已加载，直接问 Unity 而不是等 API 自己的场景差集：模组常常在进入主菜单的那一帧
+        // 就请求按钮，而那份差集可能要到下一帧才更新。
+        private static bool IsMainMenuSceneLoaded()
         {
-            menuButtonTemplate = null;
-            menuPanel = null;
-            mainMenu = null;
-            observedMenuPointer = IntPtr.Zero;
-            menuTransitionFrames = 0;
-            menuGeneration++;
             try
             {
-                MenuPanel[] panels = Resources.FindObjectsOfTypeAll<MenuPanel>();
-                foreach (MenuPanel panel in panels)
-                {
-                    if (panel != null && panel.gameObject.activeInHierarchy && panel.buttonPrefab != null)
-                    {
-                        menuPanel = panel;
-                        menuButtonTemplate = panel.buttonPrefab;
-                        Tab[] liveTabs = panel.GetComponentsInChildren<Tab>(true);
-                        foreach (Tab liveTab in liveTabs)
-                        {
-                            if (liveTab == null || !liveTab.gameObject.activeInHierarchy)
-                                continue;
-                            string livePath = GetHierarchyPath(liveTab.transform);
-                            if (livePath.Contains("Menu Buttons/Menu Button", StringComparison.OrdinalIgnoreCase))
-                            {
-                                menuButtonTemplate = liveTab;
-                                break;
-                            }
-                        }
-                        break;
-                    }
-                }
-                Tab[] candidates = Resources.FindObjectsOfTypeAll<Tab>();
-                Tab? liveMenuButton = null;
-                string liveMenuButtonPath = "";
-                foreach (Tab candidate in candidates)
-                {
-                    if (candidate == null || !candidate.gameObject.activeInHierarchy)
-                        continue;
-                    string path = GetHierarchyPath(candidate.transform);
-                    if (path.Contains("Menu Panel/Content/Menu Buttons/Menu Button", StringComparison.OrdinalIgnoreCase)
-                        && path.EndsWith("Menu Button(Clone)", StringComparison.OrdinalIgnoreCase)
-                        && path.Length > liveMenuButtonPath.Length)
-                    {
-                        liveMenuButton = candidate;
-                        liveMenuButtonPath = path;
-                    }
-                }
-                if (liveMenuButton != null)
-                    menuButtonTemplate = liveMenuButton;
-                if (menuButtonTemplate == null) foreach (Tab candidate in candidates)
-                {
-                    if (candidate == null || candidate.hideFlags != HideFlags.HideAndDontSave)
-                        continue;
-                    RectTransform? candidateRect = candidate.GetComponent<RectTransform>();
-                    if (candidateRect == null || candidateRect.rect.width <= 1f || candidateRect.rect.height <= 1f
-                        || candidateRect.rect.width > 600f || candidateRect.rect.height > 100f)
-                        continue;
-                    if (candidate.Label != null && candidate.OnClick != null)
-                    {
-                        menuButtonTemplate = candidate;
-                        break;
-                    }
-                }
+                Scene scene = SceneManager.GetSceneByName("MainMenu");
+                return scene.IsValid() && scene.isLoaded;
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                error($"[SMA-UI] Menu Button template probe failed: {exception}");
+                return false;
+            }
+        }
+
+        // 面板每帧全场景扫描太贵，所以只在主菜单场景里（或调用方此刻就要用）解析。
+        // `MainMenu.panel` 由原生在初始化过程中赋值，场景加载完但还没赋值时退回扫描活的 `MenuPanel`。
+        private MenuPanel? EnsurePanel(bool allowSearch)
+        {
+            if (mainMenu != null && !IsActiveAndEnabled(mainMenu))
+                ResetNativeState();
+            if (mainMenu == null && allowSearch)
+                mainMenu = FindMainMenu();
+
+            MenuPanel? panel = mainMenu == null ? null : SafeMenuPanel(mainMenu);
+            if (allowSearch && (panel == null || SafeButtonPool(panel) == null))
+                panel = FindLiveMenuPanel();
+            menuPanel = panel != null && SafeButtonPool(panel) != null ? panel : null;
+            return menuPanel;
+        }
+
+        private static MainMenu? FindMainMenu()
+        {
+            // `MainMenu` 是主菜单场景的 `MainSceneRoot`；场景加载完就在，未加载时找不到。
+            MainMenu[] candidates = Resources.FindObjectsOfTypeAll<MainMenu>();
+            foreach (MainMenu candidate in candidates)
+            {
+                if (candidate != null && IsActiveAndEnabled(candidate))
+                    return candidate;
             }
 
-            debug.Lifecycle($"template probe menuPanel={(menuPanel == null ? "none" : GetHierarchyPath(menuPanel.transform))} tab={(menuButtonTemplate == null ? "none" : GetHierarchyPath(menuButtonTemplate.transform))}");
-            PublishStatusIfChanged(false, menuButtonTemplate == null ? UiCapability.None : UiCapability.MenuButton);
+            return null;
+        }
+
+        private static MenuPanel? FindLiveMenuPanel()
+        {
+            MenuPanel[] candidates = Resources.FindObjectsOfTypeAll<MenuPanel>();
+            foreach (MenuPanel candidate in candidates)
+            {
+                if (candidate != null && IsActiveAndEnabled(candidate) && SafeButtonPool(candidate) != null)
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        private static MenuPanel? SafeMenuPanel(MainMenu menu)
+        {
+            try
+            {
+                return menu.panel;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static ObjectPool<Tab>? SafeButtonPool(MenuPanel panel)
+        {
+            try
+            {
+                return panel.buttonPool;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static int SafeActiveButtonCount(MenuPanel? panel)
+        {
+            if (panel == null)
+                return 0;
+
+            try
+            {
+                return panel.ActiveButtonCount;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        private static IntPtr SafePointer(UnityEngine.Object? value)
+        {
+            if (value == null)
+                return IntPtr.Zero;
+
+            try
+            {
+                return value.Pointer;
+            }
+            catch (Exception)
+            {
+                return IntPtr.Zero;
+            }
+        }
+
+        private static string SafeLabel(Tab? tab)
+        {
+            if (tab == null)
+                return "";
+
+            try
+            {
+                return tab.Label ?? "";
+            }
+            catch (Exception)
+            {
+                return "";
+            }
+        }
+
+        // 原生 Tab 是否仍在面板的对象池 active 列表里。`GetActive(i)` 按槽位顺序数第 i 个
+        // active 元素，`ActiveCount` 是 active 元素个数（原生 `MenuPanel.Clear` 与
+        // `ObjectPool.ReturnAllToPool` 都把它清零），所以这里能直接还原面板当前的按钮集合。
+        private static bool IsActiveInPool(MenuPanel panel, Tab candidate)
+        {
+            ObjectPool<Tab>? pool = SafeButtonPool(panel);
+            if (pool == null)
+                return false;
+
+            try
+            {
+                int count = pool.ActiveCount;
+                for (int index = 0; index < count; index++)
+                {
+                    Tab? active = pool.GetActive(index);
+                    if (active != null && active.Pointer == candidate.Pointer)
+                        return true;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        private static List<IntPtr> ActivePointers(MenuPanel panel)
+        {
+            List<IntPtr> pointers = new();
+            ObjectPool<Tab>? pool = SafeButtonPool(panel);
+            if (pool == null)
+                return pointers;
+
+            try
+            {
+                int count = pool.ActiveCount;
+                for (int index = 0; index < count; index++)
+                {
+                    Tab? active = pool.GetActive(index);
+                    if (active != null)
+                        pointers.Add(active.Pointer);
+                }
+            }
+            catch (Exception)
+            {
+                pointers.Clear();
+            }
+
+            return pointers;
+        }
+
+        private static List<Tab> ActiveTabs(MenuPanel panel)
+        {
+            List<Tab> tabs = new();
+            ObjectPool<Tab>? pool = SafeButtonPool(panel);
+            if (pool == null)
+                return tabs;
+
+            try
+            {
+                int count = pool.ActiveCount;
+                for (int index = 0; index < count; index++)
+                {
+                    Tab? active = pool.GetActive(index);
+                    if (active != null)
+                        tabs.Add(active);
+                }
+            }
+            catch (Exception)
+            {
+                tabs.Clear();
+            }
+
+            return tabs;
+        }
+
+        private void RegisterHandles(MenuPanel panel)
+        {
+            foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
+            {
+                if (handle is not UnityMenuButtonHandle nativeHandle)
+                    continue;
+                if (nativeHandle.TryRegister(panel))
+                    debug.Lifecycle($"register generation={menuGeneration} text={nativeHandle.Text}");
+                if (nativeHandle.ConsumeActivityChange(out bool activeSelf, out bool activeInHierarchy, out string path))
+                    // 这是**成功**注册后的活动状态诊断，不是失败：默认关闭的 UI trace，避免把正常
+                    // 生命周期当错误刷进 Latest.log（真正的失败仍然走 error/warn）。
+                    debug.Lifecycle($"native-registration text={nativeHandle.Text} activeSelf={activeSelf} activeInHierarchy={activeInHierarchy} path={path}");
+            }
+        }
+
+        // 清掉指向主菜单场景对象的引用。场景卸载后这些代理都会变成死的 IL2CPP 对象。
+        private void ResetNativeState()
+        {
+            mainMenu = null;
+            menuPanel = null;
+            observedScreenPointer = IntPtr.Zero;
+            settleFrames = 0;
+            menuGeneration++;
         }
 
         internal void SceneLoaded(string sceneName)
         {
             currentSceneName = sceneName ?? "";
             if (!string.Equals(currentSceneName, "MainMenu", StringComparison.OrdinalIgnoreCase))
-            {
-                mainMenu = null;
-                menuPanel = null;
-                observedMenuPointer = IntPtr.Zero;
-                menuTransitionFrames = 0;
-            }
-            RefreshCapabilities();
+                ResetNativeState();
+            MenuPanel? panel = EnsurePanel(allowSearch: IsMainMenuSceneLoaded());
+            PublishStatusIfChanged(false, panel != null ? UiCapability.MenuButton : UiCapability.None);
             debug.Lifecycle($"scene-loaded scene={currentSceneName}");
         }
 
         public UiCreateResult<IUiMenuButtonHandle> CreateMenuButton(string ownerId, UiMenuButtonDefinition definition)
         {
-            if (menuButtonTemplate == null)
-                RefreshCapabilities();
             if (disposed)
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.OwnerDisposed, "UI backend is disposed.");
             if (definition.Parent == null && string.IsNullOrWhiteSpace(definition.BelowNativeButtonText))
@@ -364,12 +485,22 @@ namespace SprocketModAPI
             Canvas? canvas = definition.Parent?.GetComponentInParent<Canvas>();
             if (definition.Parent != null && (canvas == null || !IsActiveAndEnabled(canvas) || canvas.GetComponent<GraphicRaycaster>() == null))
                 return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.InvalidParent, "Menu button parent must be under an active Canvas with GraphicRaycaster.");
-            if (!Capabilities.Supports(UiCapability.MenuButton))
-                return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.TemplateNotFound, "No verified Sprocket Tab template is available.");
+            // 原生 `MenuPanel` 与它的按钮池由游戏在场景加载过程中逐步建好；请求按钮的模组往往只在
+            // 进入主菜单那一帧调用一次，不能因为这一刻还没就绪就让它拿不到按钮。所以这里只登记意图，
+            // 真正的原生按钮由 `Update` 在面板就绪后建一次。
+            MenuPanel? panel = EnsurePanel(allowSearch: true);
+            if (panel == null && !IsMainMenuSceneLoaded())
+                return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.SceneUnavailable, "The main menu scene is not loaded.");
 
             try
             {
-                return CreateMenu(ownerId, definition);
+                string text = definition.Text ?? "";
+                Action onClick = definition.OnClick == null
+                    ? NoOpClick
+                    : WrapCallback(ownerId, "MenuButton", definition.OnClick)!;
+                var handle = new UnityMenuButtonHandle(warn, (UnityAction)onClick, text, definition.Enabled, definition.Selected, definition.BelowNativeButtonText, () => handles.RemoveAll(item => item.IsDisposed));
+                handles.Add(handle);
+                return UiCreateResult<IUiMenuButtonHandle>.Success(handle);
             }
             catch (Exception exception)
             {
@@ -378,62 +509,9 @@ namespace SprocketModAPI
             }
         }
 
-        private UiCreateResult<IUiMenuButtonHandle> CreateMenu(string ownerId, UiMenuButtonDefinition definition)
-        {
-            if (menuButtonTemplate == null)
-                return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.TemplateNotFound, "Menu Button template is unavailable.");
-            if (IsActiveAndEnabled(menuPanel))
-            {
-                UnityAction? factoryAction = definition.OnClick == null ? null : (UnityAction)WrapCallback(ownerId, "MenuButton", definition.OnClick)!;
-                Tab? tab = CreateRegisteredTab(menuPanel, definition.Text ?? "", factoryAction, definition.Enabled);
-                if (tab == null)
-                    return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.CreationFailed, "MenuPanel.Button created no matching active Tab.");
-                if (!TryPlaceBelow(menuPanel, tab, definition.BelowNativeButtonText))
-                    return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.TemplateNotFound, $"Native menu button anchor '{definition.BelowNativeButtonText}' was not found.");
-                menuPanel.Apply();
-                GameObject nativeRoot = tab.gameObject;
-                var nativeHandle = new UnityMenuButtonHandle(nativeRoot, tab, factoryAction, definition.Text ?? "", definition.Enabled, definition.Selected, definition.BelowNativeButtonText, menuGeneration, () => handles.RemoveAll(item => item.IsDisposed));
-                handles.Add(nativeHandle);
-                return UiCreateResult<IUiMenuButtonHandle>.Success(nativeHandle);
-            }
-            if (definition.Parent == null)
-                return UiCreateResult<IUiMenuButtonHandle>.Failed(UiFailureCode.SceneUnavailable, "Main menu MenuPanel is unavailable.");
-            GameObject? root = null;
-            try
-            {
-                root = UnityEngine.Object.Instantiate(menuButtonTemplate.gameObject, definition.Parent, false);
-                RectTransform? menuRect = root.GetComponent<RectTransform>();
-                if (menuRect != null)
-                {
-                    menuRect.anchorMin = new Vector2(0.5f, 0.5f);
-                    menuRect.anchorMax = new Vector2(0.5f, 0.5f);
-                    menuRect.pivot = new Vector2(0.5f, 0.5f);
-                    menuRect.localScale = Vector3.one;
-                    menuRect.sizeDelta = definition.Size ?? new Vector2(180f, 36f);
-                    menuRect.anchoredPosition = definition.AnchoredPosition ?? Vector2.zero;
-                }
-                Tab tab = root.GetComponent<Tab>();
-                if (tab == null)
-                    throw new InvalidOperationException("Cloned Menu Button has no Tab component.");
-                tab.Label = definition.Text ?? "";
-                tab.SetState(definition.Selected ? TabState.Selected : definition.Enabled ? TabState.Normal : TabState.Disabled);
-                Action? safeCallback = WrapCallback(ownerId, "MenuButton", definition.OnClick);
-                UnityAction? action = safeCallback == null ? null : (UnityAction)safeCallback;
-                tab.onClick = new UnityEvent();
-                if (action != null)
-                    tab.OnClick.AddListener(action);
-                var handle = new UnityMenuButtonHandle(root, tab, action, definition.Text ?? "", definition.Enabled, definition.Selected, definition.BelowNativeButtonText, menuGeneration, () => handles.RemoveAll(item => item.IsDisposed));
-                handle.Enabled = definition.Enabled;
-                handle.Selected = definition.Selected;
-                handles.Add(handle);
-                return UiCreateResult<IUiMenuButtonHandle>.Success(handle);
-            }
-            catch
-            {
-                if (root != null) UnityEngine.Object.Destroy(root);
-                throw;
-            }
-        }
+        // 原生按钮就位（`ActiveButtonCount > 0`）才算面板可供模组安放按钮：这时锚点与布局都已画好。
+        private static bool IsPanelReady(MenuPanel? panel)
+            => panel != null && IsActiveAndEnabled(panel) && SafeButtonPool(panel) != null && SafeActiveButtonCount(panel) > 0;
 
         private Action? WrapCallback(string ownerId, string capability, Action? callback)
         {
@@ -444,6 +522,74 @@ namespace SprocketModAPI
                 try { callback(); }
                 catch (Exception exception) { error($"[SMA-UI] callback failed owner={ownerId} capability={capability}: {exception}"); }
             };
+        }
+
+        private static Tab? FindActiveButton(MenuPanel panel, string label)
+        {
+            foreach (Tab candidate in ActiveTabs(panel))
+            {
+                if (string.Equals(SafeLabel(candidate), label, StringComparison.OrdinalIgnoreCase))
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        // 原生 `MenuPanel.Button` 从 `buttonPool.Get()` 取一个未激活的槽位并激活它（`GetNextFreeIndex`
+        // 每次调用都重扫并把游标复位），所以新按钮就是池 active 列表里相对调用前多出来的那个元素。
+        private static Tab? CreateTab(MenuPanel panel, string text, UnityAction? action, bool interactable)
+        {
+            List<IntPtr> before = ActivePointers(panel);
+            panel.Button(text, action!, interactable);
+            foreach (Tab candidate in ActiveTabs(panel))
+            {
+                if (before.Contains(candidate.Pointer))
+                    continue;
+                if (string.Equals(SafeLabel(candidate), text, StringComparison.Ordinal))
+                    return candidate;
+            }
+
+            return null;
+        }
+
+        // 把模组按钮插到指定原生按钮下方。`ListLayout` 的顺序由 `Add` 调用顺序决定（没有 Insert），
+        // 所以先清内部列表再按目标顺序补回全部 active 按钮：原生切屏只对按钮池 `ReturnAllToPool`
+        // 再重新 `Add`，布局列表里会留下上一轮的条目，这一步同时把它们换掉。
+        private static void PlaceBelow(MenuPanel panel, Tab tab, string? anchorText)
+        {
+            if (string.IsNullOrWhiteSpace(anchorText))
+                return;
+            ListLayout? layout = SafeLayout(panel);
+            if (layout == null)
+                return;
+
+            List<Tab> ordered = ActiveTabs(panel);
+            ordered.RemoveAll(candidate => candidate.Pointer == tab.Pointer);
+            int anchorIndex = ordered.FindIndex(candidate => string.Equals(SafeLabel(candidate), anchorText, StringComparison.OrdinalIgnoreCase));
+            if (anchorIndex < 0)
+                return;
+            ordered.Insert(anchorIndex + 1, tab);
+
+            layout.Clear();
+            foreach (Tab current in ordered)
+            {
+                RectTransform? rect = current.GetComponent<RectTransform>();
+                if (rect != null)
+                    layout.Add(rect);
+            }
+            layout.ForceRelayout();
+        }
+
+        private static ListLayout? SafeLayout(MenuPanel panel)
+        {
+            try
+            {
+                return panel.layout;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static string GetHierarchyPath(Transform transform)
@@ -458,77 +604,22 @@ namespace SprocketModAPI
             return path;
         }
 
-        private static Tab? CreateRegisteredTab(MenuPanel panel, string text, UnityAction? action, bool interactable)
-        {
-            Sprocket.ObjectPool<Tab>? pool = panel.buttonPool;
-            if (pool == null)
-                return null;
-            int before = pool.ActiveCount;
-            panel.Button(text, action!, interactable);
-            int after = pool.ActiveCount;
-            for (int index = after - 1; index >= 0; index--)
-            {
-                Tab? candidate = pool.GetActive(index);
-                if (candidate != null && candidate.gameObject.activeInHierarchy && candidate.Label == text)
-                    return candidate;
-            }
-            return null;
-        }
-
-        private static bool TryPlaceBelow(MenuPanel panel, Tab tab, string? anchorText)
-        {
-            if (string.IsNullOrWhiteSpace(anchorText))
-                return true;
-            Sprocket.ObjectPool<Tab>? pool = panel.buttonPool;
-            if (pool == null)
-                return false;
-            List<Tab> tabs = new();
-            for (int index = 0; index < pool.ActiveCount; index++)
-            {
-                Tab? anchor = pool.GetActive(index);
-                if (anchor != null)
-                    tabs.Add(anchor);
-            }
-            int anchorIndex = tabs.FindIndex(candidate => candidate != tab
-                && string.Equals(candidate.Label, anchorText, StringComparison.OrdinalIgnoreCase));
-            if (anchorIndex < 0)
-                return false;
-            tabs.Remove(tab);
-            tabs.Insert(Math.Min(anchorIndex + 1, tabs.Count), tab);
-            ListLayout? layout = panel.GetComponent<ListLayout>();
-            if (layout == null)
-                return false;
-            layout.Clear();
-            foreach (Tab ordered in tabs)
-            {
-                RectTransform? rect = ordered.GetComponent<RectTransform>();
-                if (rect != null)
-                    layout.Add(rect);
-            }
-            layout.ForceRelayout();
-            return true;
-        }
-
         public void SceneUnloaded() => SceneUnloaded("MainMenu");
 
         internal void SceneUnloaded(string sceneName)
         {
-            foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
-            {
-                if (handle is UnityMenuButtonHandle nativeHandle)
-                    nativeHandle.InvalidateForScene();
-                else
-                    handle.Dispose();
-            }
-            menuButtonTemplate = null;
             bool unloadingMainMenu = string.Equals(sceneName, "MainMenu", StringComparison.OrdinalIgnoreCase);
             if (unloadingMainMenu)
             {
-                mainMenu = null;
-                observedMenuPointer = IntPtr.Zero;
-                menuTransitionFrames = 0;
-                menuGeneration++;
-                menuPanel = null;
+                foreach (IUiMenuButtonHandle handle in new List<IUiMenuButtonHandle>(handles))
+                {
+                    if (handle is UnityMenuButtonHandle nativeHandle)
+                        nativeHandle.InvalidateForScene();
+                    else
+                        handle.Dispose();
+                }
+
+                ResetNativeState();
                 currentSceneName = "";
             }
             else if (menuPanel != null)
@@ -536,7 +627,7 @@ namespace SprocketModAPI
                 currentSceneName = "MainMenu";
                 debug.Lifecycle($"scene-unloaded-overlay scene={sceneName} resume=MainMenu");
             }
-            PublishStatusIfChanged(false);
+            PublishStatusIfChanged(false, menuPanel != null ? UiCapability.MenuButton : UiCapability.None);
         }
 
         public void Dispose()
@@ -572,66 +663,89 @@ namespace SprocketModAPI
 
         private sealed class UnityMenuButtonHandle : IUiMenuButtonHandle
         {
-            private GameObject? root;
-            private Tab? tab;
+            private readonly Action<string>? warn;
             private readonly UnityAction? action;
-            private string registeredText;
             private readonly Action collect;
+            private readonly string? belowNativeButtonText;
+            private MenuPanel? panel;
+            private Tab? tab;
+            private string registeredText;
             private bool disposed;
             private bool enabled;
             private bool selected;
             private bool lastActive;
             private bool activityInitialized;
-            private int registrationGeneration;
-            private readonly string? belowNativeButtonText;
+            private bool anchorWarned;
 
-            internal UnityMenuButtonHandle(GameObject root, Tab tab, UnityAction? action, string registeredText, bool enabled, bool selected, string? belowNativeButtonText, int generation, Action collect)
+            internal UnityMenuButtonHandle(Action<string>? warn, UnityAction? action, string registeredText, bool enabled, bool selected, string? belowNativeButtonText, Action collect)
             {
-                this.root = root;
-                this.tab = tab;
+                this.warn = warn;
                 this.action = action;
                 this.registeredText = registeredText;
                 this.enabled = enabled;
                 this.selected = selected;
-                registrationGeneration = generation;
                 this.belowNativeButtonText = belowNativeButtonText;
                 this.collect = collect;
             }
 
-            internal bool EnsureRegistered(MenuPanel? panel, int generation, Func<MenuPanel, string, UnityAction?, bool, Tab?> createTab)
+            // 每个句柄在同一个面板实例里最多拥有一个原生按钮：只有确认它已不在池里
+            // （或已被原生重画复用成别的按钮）才补建一个。
+            internal bool TryRegister(MenuPanel current)
             {
-                bool active;
-                try { active = tab != null && tab.gameObject != null && tab.gameObject.activeInHierarchy; }
-                catch (Exception) { active = false; }
-                if (disposed || registrationGeneration == generation || panel == null || !IsActiveAndEnabled(panel))
+                if (disposed)
                     return false;
-                Tab? existing = createTab(panel, registeredText, action, enabled);
-                if (existing == null)
+                if (panel == null || panel.Pointer != current.Pointer)
+                {
+                    // 面板实例换了：旧按钮随上一个场景/布局销毁，重新登记。
+                    panel = current;
+                    tab = null;
+                }
+                else if (OwnsNativeTab(current))
+                {
                     return false;
-                tab = existing;
-                root = existing.gameObject;
-                registrationGeneration = generation;
-                TryPlaceBelow(panel, existing, belowNativeButtonText);
-                panel.Apply();
+                }
+
+                // 锚点由原生 `DrawMainMenu` 随切屏重画；它还没出现时先不建，否则按钮会落在列表末尾，
+                // 也就是"静默放到错误位置"。
+                if (!string.IsNullOrWhiteSpace(belowNativeButtonText) && FindActiveButton(current, belowNativeButtonText!) == null)
+                {
+                    WarnAnchorMissingOnce();
+                    return false;
+                }
+
+                Tab? created = CreateTab(current, registeredText, action, enabled);
+                if (created == null)
+                    return false;
+                tab = created;
+                PlaceBelow(current, created, belowNativeButtonText);
+                current.Apply();
+                ApplyNativeState();
                 return true;
             }
 
-            public bool IsDisposed => disposed;
-            public bool Enabled
+            private void WarnAnchorMissingOnce()
             {
-                get => !disposed && enabled;
-                set
-                {
-                    if (disposed) return;
-                    enabled = value;
-                    ApplyState();
-                }
+                if (anchorWarned || warn == null)
+                    return;
+                anchorWarned = true;
+                warn($"[SMA-UI] native menu button anchor '{belowNativeButtonText}' is not on the current main-menu panel; the button waits for it.");
+            }
+
+            private bool OwnsNativeTab(MenuPanel current)
+            {
+                Tab? current2 = tab;
+                if (current2 == null)
+                    return false;
+                bool owned = MenuButtonOwnership.IsOwned(registeredText, SafeLabel(current2), IsActiveInPool(current, current2));
+                if (!owned)
+                    tab = null;
+                return owned;
             }
 
             internal void InvalidateForScene()
             {
                 tab = null;
-                root = null;
+                panel = null;
             }
 
             internal bool ConsumeActivityChange(out bool activeSelf, out bool activeInHierarchy, out string path)
@@ -652,16 +766,32 @@ namespace SprocketModAPI
                 return changed;
             }
 
+            public bool IsDisposed => disposed;
+            public bool Enabled
+            {
+                get => !disposed && enabled;
+                set
+                {
+                    if (disposed) return;
+                    enabled = value;
+                    ApplyNativeState();
+                }
+            }
+
             public string Text
             {
-                get => !disposed && tab != null ? tab.Label : registeredText;
+                get => !disposed && tab != null ? SafeLabel(tab) : registeredText;
                 set
                 {
                     if (disposed) return;
                     registeredText = value ?? "";
-                    if (tab != null) tab.Label = registeredText;
+                    Tab? current = tab;
+                    if (current == null) return;
+                    try { current.Label = registeredText; }
+                    catch (Exception) { tab = null; }
                 }
             }
+
             public bool Selected
             {
                 get => !disposed && selected;
@@ -669,14 +799,17 @@ namespace SprocketModAPI
                 {
                     if (disposed) return;
                     selected = value;
-                    ApplyState();
+                    ApplyNativeState();
                 }
             }
 
-            private void ApplyState()
+            internal void ApplyNativeState()
             {
-                if (tab != null)
-                    tab.SetState(!enabled ? TabState.Disabled : selected ? TabState.Selected : TabState.Normal);
+                Tab? current = tab;
+                if (current == null)
+                    return;
+                try { current.SetState(!enabled ? TabState.Disabled : selected ? TabState.Selected : TabState.Normal); }
+                catch (Exception) { tab = null; }
             }
 
             public void Dispose()

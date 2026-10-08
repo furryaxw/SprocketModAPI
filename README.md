@@ -87,14 +87,14 @@ dotnet run --configuration Release `
 
 ## Current Limitations
 
-- v1 supports keyboard and mouse only.
-- The management window depends on the current Sprocket settings scene and UI structure, so it may need adapting after a game update.
-- The metadata snapshot currently covers **loaded** mods only: Registry matches (unavailable offline) are not shown in the menu.
-- Configuration controls in v1 come in only four kinds — toggle, slider, dropdown, and text: there is no conditional visibility, nested grouping, or keybinding control. Sliders use `+/-` taps instead of dragging, and dropdowns cycle instead of expanding a list.
-- The in-game Mod menu is hand-built UGUI: the offline contract suite covers only the list model, search, disable-renaming, and configuration read/write.
-- The UI provides only a Menu Button based on the verified Sprocket `Tab` template; Selection, Prompt, and other native UI adapters are out of scope for now.
-- Native conflict import reads only bindings that are currently loaded and can be resolved unambiguously to a keyboard key, mouse button, or left/right modifier combination; composite bindings that cannot be interpreted reliably produce no speculative warnings.
-- A passing build and offline tests do not mean in-game acceptance has been completed for every resolution, main-menu entry, and pause-menu entry.
+- v1 仅支持键盘和鼠标。
+- 管理窗口依赖当前 Sprocket 设置场景和 UI 结构，游戏更新后可能需要适配。
+- 元数据快照目前只覆盖**已加载**模组：Registry 匹配结果（离线不可得）不在菜单里显示。
+- 配置控件 v1 只有开关、滑条、下拉、文本四种：没有条件显示、嵌套分组和键位控件；滑条用点按 `+/-` 代替拖动，下拉用循环切换代替展开列表。
+- 游戏内 Mod 菜单是自绘 UGUI：离线合约只覆盖列表模型、搜索、禁用改名与配置读写。
+- UI 只提供基于原生 `MenuPanel` 按钮池的 Menu Button；Selection、Prompt 和其他原生 UI 适配器不在当前范围内。
+- 原生冲突导入只读取当前已加载且能明确解析为键盘、鼠标或左右修饰键组合的绑定；无法可靠解释的复合绑定不会产生推测性警告。
+- 构建和离线测试通过不代表所有分辨率、主菜单入口和暂停菜单入口均已完成游戏内验收。
 
 ## License
 

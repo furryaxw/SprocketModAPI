@@ -144,16 +144,15 @@ internal static class Program
             && uiApi.Contains("CreateMainMenuButtonAsync") && uiApi.Contains("UiFailureCode") && uiApi.Contains("UiCapabilitySnapshot"),
             "public API documentation covers the complete keybinding and UI contracts");
         Check(uiContracts.Contains("TemplateNotFound"), "UI structured failures include template failure");
-        Check(uiBackend.Contains("Resources.FindObjectsOfTypeAll<MenuPanel>()")
-            && uiBackend.Contains("panel.buttonPrefab")
-            && uiBackend.Contains("panel.GetComponentsInChildren<Tab>(true)")
-            && uiBackend.Contains("Resources.FindObjectsOfTypeAll<Tab>()")
-            && uiBackend.Contains("candidate.hideFlags != HideFlags.HideAndDontSave")
-            && uiBackend.Contains("UiFailureCode.TemplateNotFound"),
-            "Menu Button uses a probed native Tab template and fails closed");
+        Check(uiBackend.Contains("FindObjectsOfTypeAll<MainMenu>()")
+            && uiBackend.Contains("menu.panel")
+            && uiBackend.Contains("panel.buttonPool")
+            && uiBackend.Contains("pool.GetActive(")
+            && uiBackend.Contains("SceneManager.GetSceneByName(\"MainMenu\")"),
+            "Menu Button resolves the live native MenuPanel and decides availability from the loaded scene");
         Check(uiBackend.Contains("GetComponent<RectTransform>()")
             && !uiBackend.Contains("(RectTransform)root.transform"),
-            "UI roots use real RectTransform components without unsafe Transform casts");
+            "UI layout entries use real RectTransform components without unsafe Transform casts");
         Check(uiBackend.Contains("GetComponentInParent<Canvas>()")
             && uiBackend.Contains("GetComponent<GraphicRaycaster>()")
             && uiBackend.Contains("Menu button parent must be under an active Canvas with GraphicRaycaster"),
@@ -170,9 +169,19 @@ internal static class Program
             && uiServiceDispose.IndexOf("disposed = true;", StringComparison.Ordinal)
                 < uiServiceDispose.IndexOf("scope.Dispose();", StringComparison.Ordinal),
             "UI shutdown closes service before releasing native UI and never runs a final backend update");
-        Check(uiBackend.Contains("menuRect.anchorMin = new Vector2(0.5f, 0.5f)")
-            && uiBackend.Contains("menuRect.sizeDelta = definition.Size ?? new Vector2(180f, 36f)"),
-            "cloned Menu Button layout is reset from native stretch settings");
+        int registerStart = uiBackend.IndexOf("internal bool TryRegister(MenuPanel current)", StringComparison.Ordinal);
+        int registerEnd = uiBackend.IndexOf("private bool OwnsNativeTab(", registerStart, StringComparison.Ordinal);
+        string registerBody = registerStart < 0 || registerEnd < registerStart ? "" : uiBackend.Substring(registerStart, registerEnd - registerStart);
+        int anchorGate = registerBody.IndexOf("FindActiveButton(current, belowNativeButtonText!)", StringComparison.Ordinal);
+        int pooledCreate = registerBody.IndexOf("CreateTab(current, registeredText, action, enabled)", StringComparison.Ordinal);
+        Check(anchorGate >= 0 && pooledCreate > anchorGate,
+            "Menu Button waits for the native anchor before placing its pooled button");
+        Check(uiBackend.Contains("if (OwnsNativeTab(current))")
+            && uiBackend.Contains("MenuButtonOwnership.IsOwned("),
+            "Menu Button re-creates only a pooled tab it no longer owns");
+        Check(uiBackend.Contains("handles.Add(handle);")
+            && uiBackend.Contains("internal bool TryRegister(MenuPanel current)"),
+            "Menu Button registers the owner's intent and lets the native panel decide when it can be created");
         Check(uiBackend.Contains("debug.Lifecycle($\"native-registration")
             && uiBackend.Contains("error($\"[SMA-UI] create menu button failed"),
             "successful native registration activity goes to diagnostics while real failures stay on the error sink");
